@@ -1,0 +1,134 @@
+/* ─────────────────────────────────────────────
+   Flick Design Tokens
+   Source: flick.art original CSS + screenshots
+   ───────────────────────────────────────────── */
+
+:root {
+  /* ─── Raw Palette ─── */
+  --flick-white: #ffffff;
+  --flick-grey-50: #fafafa;
+  --flick-grey-100: #f4f4f5;
+  --flick-grey-200: #e4e4e7;
+  --flick-grey-300: #d4d4d8;
+  --flick-grey-400: #a1a1aa;
+  --flick-grey-500: #71717a;
+  --flick-grey-600: #52525b;
+  --flick-grey-700: #3f3f46;
+  --flick-grey-800: #27272a;
+  --flick-grey-900: #18181b;
+  --flick-grey-950: #09090b;
+  --flick-black: #000000;
+  --flick-brand: #e84040;
+
+  /* RGB triplets for rgba() */
+  --color-brand-rgb: 232, 64, 64;
+  --color-white-rgb: 255, 255, 255;
+  --color-black-rgb: 0, 0, 0;
+
+  /* Palette aliases (used verbatim in original flick.art CSS) */
+  --palette-grey-50: #fafafa;
+  --palette-grey-400: #a1a1aa;
+  --palette-grey-500: #71717a;
+  --palette-grey-1000: #09090b;
+
+  /* ─── Opacity Scale ─── */
+  --opacity-0: 0;
+  --opacity-10: 0.1;
+  --opacity-15: 0.15;
+  --opacity-20: 0.2;
+  --opacity-25: 0.25;
+  --opacity-30: 0.3;
+  --opacity-35: 0.35;
+  --opacity-40: 0.4;
+  --opacity-45: 0.45;
+  --opacity-50: 0.5;
+  --opacity-60: 0.6;
+  --opacity-70: 0.7;
+  --opacity-75: 0.75;
+  --opacity-80: 0.8;
+  --opacity-85: 0.85;
+  --opacity-100: 1;
+
+  /* ─── Semantic Colors ─── */
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f4f4f5;
+  --color-surface-hover: #f4f4f5;
+  --color-surface-active: #e4e4e7;
+
+  --color-text: #18181b;
+  --color-text-secondary: #71717a;
+
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+  --color-border-full: #a1a1aa;
+
+  --color-action-bg: #09090b;
+  --color-action-bg-hover: #27272a;
+  --color-action-bg-active: #3f3f46;
+  --color-action-text: #ffffff;
+
+  --color-error: #dc2626;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+
+  /* ─── Typography ─── */
+  --font-sans: Jost, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --fontSize-xs: 0.625rem;
+  --fontSize-sm: 0.75rem;
+  --fontSize-base: 0.875rem;
+  --fontSize-lg: 1rem;
+
+  --fontWeight-normal: 400;
+  --fontWeight-medium: 500;
+  --fontWeight-semibold: 600;
+  --fontWeight-bold: 700;
+
+  /* ─── Shape & Motion ─── */
+  --radius-button: 0px;
+  --radius-chip: 9999px;
+  --radius-card: 0px;
+  --border-width: 0.3px;
+
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  --shadow-soft:
+    0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-float:
+    0 4px 16px -4px rgba(0, 0, 0, 0.12), 0 2px 6px -2px rgba(0, 0, 0, 0.08);
+}
+:root {
+  /* ─── Shadcn Variable Mapping ─── */
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-action-bg);
+  --primary-foreground: var(--color-action-text);
+  --secondary: var(--color-surface-raised);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-surface-raised);
+  --muted-foreground: var(--color-text-secondary);
+  --accent: var(--color-surface-hover);
+  --accent-foreground: var(--color-text);
+  --destructive: var(--color-error);
+  --border: var(--color-border);
+  --input: var(--color-border-strong);
+  --ring: var(--color-border-full);
+  --radius: var(--radius-button);
+
+  --sidebar: var(--color-surface-raised);
+  --sidebar-foreground: var(--color-text);
+  --sidebar-primary: var(--color-action-bg);
+  --sidebar-primary-foreground: var(--color-action-text);
+  --sidebar-accent: var(--color-surface-active);
+  --sidebar-accent-foreground: var(--color-text);
+  --sidebar-border: var(--color-border);
+  --sidebar-ring: var(--color-border-full);
+}
