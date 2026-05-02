@@ -1,7 +1,7 @@
 import { type PointerEvent as ReactPointerEvent } from "react";
 import type { Clip } from "../../../store/editorStore";
 import type { DragState } from "../types";
-import { timeToPx } from "../timelineUtils";
+import { timeToPx } from "../utils";
 import { ROW_HEIGHT, TRIM_HANDLE_WIDTH } from "../constants";
 
 export interface ClipBlockProps {

@@ -1,5 +1,5 @@
-import { timeToPx, formatTime, computeTickInterval } from "../timelineUtils";
-import { ROW_HEIGHT, RULER_HEIGHT } from "../constants";
+import { timeToPx, formatTime, computeTickInterval } from "../utils";
+import { RULER_HEIGHT } from "../constants";
 
 interface RulerProps {
   zoom: number;

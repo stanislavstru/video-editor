@@ -27,6 +27,14 @@ export interface Row {
   type: ClipType;
 }
 
+export interface MediaItem {
+  id: string;
+  name: string;
+  src: string;
+  duration: number;
+  type: "video" | "audio";
+}
+
 export type Command =
   | {
       type: "MOVE_CLIP";
@@ -61,6 +69,7 @@ export type Command =
 interface EditorState {
   rows: Row[];
   clips: Clip[];
+  mediaItems: MediaItem[];
   currentTime: number;
   duration: number;
   playing: boolean;
@@ -88,6 +97,10 @@ interface EditorState {
   addClip: (clip: Clip) => void;
   addRow: (row: Row) => void;
 
+  addMediaItem: (item: MediaItem) => void;
+  removeMediaItem: (id: string) => void;
+  addClipFromMedia: (mediaId: string) => void;
+
   undo: () => void;
   redo: () => void;
 }
@@ -113,48 +126,13 @@ const INITIAL_ROWS: Row[] = [
   { id: "row-audio-1", label: "Audio 1", type: "audio" },
 ];
 
-const INITIAL_CLIPS: Clip[] = [
-  {
-    id: "clip-1",
-    rowId: "row-video-1",
-    start: 0,
-    duration: 10,
-    label: "Clip A",
-    type: "video",
-    color: CLIP_COLORS.video,
-    trimStart: 0,
-    sourceDuration: 10,
-  },
-  {
-    id: "clip-2",
-    rowId: "row-video-1",
-    start: 12,
-    duration: 8,
-    label: "Clip B",
-    type: "video",
-    color: CLIP_COLORS.video,
-    trimStart: 0,
-    sourceDuration: 8,
-  },
-  {
-    id: "clip-3",
-    rowId: "row-audio-1",
-    start: 0,
-    duration: 20,
-    label: "Audio",
-    type: "audio",
-    color: CLIP_COLORS.audio,
-    trimStart: 0,
-    sourceDuration: 20,
-  },
-];
-
 export const useEditorStore = create<EditorState>()(
   immer((set, get) => ({
     rows: INITIAL_ROWS,
-    clips: INITIAL_CLIPS,
+    clips: [],
+    mediaItems: [],
     currentTime: 0,
-    duration: recalcDuration(INITIAL_CLIPS),
+    duration: recalcDuration([]),
     playing: false,
     zoom: 80, // 80px per second default
     selectedClipId: null,
@@ -297,6 +275,52 @@ export const useEditorStore = create<EditorState>()(
     addRow: (row) => {
       set((draft) => {
         draft.rows.push(row);
+      });
+    },
+
+    addMediaItem: (item) => {
+      set((draft) => {
+        draft.mediaItems.push(item);
+      });
+    },
+
+    removeMediaItem: (id) => {
+      set((draft) => {
+        const item = draft.mediaItems.find((m) => m.id === id);
+        if (item) URL.revokeObjectURL(item.src);
+        draft.mediaItems = draft.mediaItems.filter((m) => m.id !== id);
+      });
+    },
+
+    addClipFromMedia: (mediaId) => {
+      const s = get();
+      const media = s.mediaItems.find((m) => m.id === mediaId);
+      if (!media) return;
+      const targetRow = s.rows.find((r) => r.type === media.type);
+      if (!targetRow) return;
+      const clipsOnRow = s.clips.filter((c) => c.rowId === targetRow.id);
+      const startTime = clipsOnRow.reduce(
+        (max, c) => Math.max(max, c.start + c.duration),
+        0,
+      );
+      const clip: Clip = {
+        id: generateId(),
+        rowId: targetRow.id,
+        start: startTime,
+        duration: media.duration,
+        label: media.name,
+        type: media.type,
+        color: CLIP_COLORS[media.type],
+        src: media.src,
+        trimStart: 0,
+        sourceDuration: media.duration,
+      };
+      const cmd: Command = { type: "ADD_CLIP", clip };
+      set((draft) => {
+        draft.clips.push(clip);
+        draft.duration = recalcDuration(draft.clips);
+        draft.undoStack.push(cmd);
+        draft.redoStack = [];
       });
     },
 

@@ -1,6 +1,6 @@
 import type { Clip } from "../../../store/editorStore";
 import type { DragState } from "../types";
-import { timeToPx } from "../timelineUtils";
+import { timeToPx } from "../utils";
 import { ROW_HEIGHT } from "../constants";
 
 interface GhostProps {

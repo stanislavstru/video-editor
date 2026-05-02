@@ -56,6 +56,11 @@
 
   --shadow-soft: var(--shadow-soft);
   --shadow-float: var(--shadow-float);
+
+  /* Radius tokens → rounded-card / rounded-button / rounded-chip */
+  --radius-card: var(--radius-card);
+  --radius-button: var(--radius-button);
+  --radius-chip: var(--radius-chip);
 }
 
 /* ─── Base Layer ─── */

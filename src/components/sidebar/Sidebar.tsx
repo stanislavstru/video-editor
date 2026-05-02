@@ -1,7 +1,7 @@
 import { SlFilm } from "react-icons/sl";
 import { MdTextFields } from "react-icons/md";
 import { useState } from "react";
-import { Media } from "../media/Media";
+import { MediaStore } from "../media-store/MediaStore";
 import { Text } from "../features/text/Text";
 
 type Tab = "media" | "text";
@@ -16,15 +16,15 @@ export const Sidebar = () => {
 
   return (
     <aside className="flex w-80 shrink-0  border-r bg-surface">
-      <div className="w-20 h-screen border-r  py-6 px-2 flex flex-col gap-1">
+      <div className="w-20 h-screen border-r py-6 px-2 flex flex-col gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`flex flex-col justify-center items-center gap-1 border py-1 w-full cursor-pointer transition-colors ${
               activeTab === tab.id
-                ? "bg-white border-gray-800 text-gray-800"
-                : "border-transparent hover:bg-gray-200 text-gray-600"
+                ? "bg-white border-color-border-full text-text-color "
+                : "border-transparent border bg-surface text-text-color hover:bg-surface-hover hover:border-color-border-full"
             }`}
           >
             {tab.icon}
@@ -33,7 +33,7 @@ export const Sidebar = () => {
         ))}
       </div>
       <div className="w-full p-2">
-        {activeTab === "media" && <Media />}
+        {activeTab === "media" && <MediaStore />}
         {activeTab === "text" && <Text />}
       </div>
     </aside>

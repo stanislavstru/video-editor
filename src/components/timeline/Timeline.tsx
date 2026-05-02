@@ -7,7 +7,7 @@ import {
 } from "react";
 import { useEditorStore } from "../../store/editorStore";
 import type { Clip } from "../../store/editorStore";
-import { timeToPx, pxToTime, snapTime, formatTime } from "./timelineUtils";
+import { timeToPx, pxToTime, snapTime, formatTime } from "./utils";
 import {
   ROW_HEIGHT,
   ROW_LABEL_WIDTH,
