@@ -1,3 +1,5 @@
+import type { ClipType } from "../../store/editorStore";
+
 export type DragState =
   | { kind: "idle" }
   | {
@@ -11,7 +13,8 @@ export type DragState =
       offsetInsideClip: number;
       /** Current ghost position */
       ghostLeft: number;
-      ghostRowId: string;
+      ghostRowId: string | null;
+      ghostRowType: ClipType;
     }
   | {
       kind: "trimming";
@@ -20,4 +23,6 @@ export type DragState =
       startPointerX: number;
       startClipStart: number;
       startClipDuration: number;
+      startTrimStart: number;
+      sourceDuration: number;
     };

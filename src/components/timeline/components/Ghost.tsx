@@ -1,19 +1,21 @@
-import type { Clip } from "../../../store/editorStore";
+import type { Clip, ClipType } from "../../../store/editorStore";
 import type { DragState } from "../types";
 import { timeToPx } from "../utils";
-import { ROW_HEIGHT } from "../constants";
+import { getClipHeight } from "../constants";
 
 interface GhostProps {
   dragState: DragState;
   clips: Clip[];
   zoom: number;
+  rowType: ClipType;
 }
 
-export function Ghost({ dragState, clips, zoom }: GhostProps) {
+export function Ghost({ dragState, clips, zoom, rowType }: GhostProps) {
   if (dragState.kind !== "moving") return null;
   const clip = clips.find((c) => c.id === dragState.clipId);
   if (!clip) return null;
   const width = Math.max(timeToPx(clip.duration, zoom), 2);
+  const clipHeight = getClipHeight(rowType);
 
   return (
     <div
@@ -21,7 +23,7 @@ export function Ghost({ dragState, clips, zoom }: GhostProps) {
       style={{
         left: dragState.ghostLeft,
         width,
-        height: ROW_HEIGHT - 8,
+        height: clipHeight,
         backgroundColor: clip.color,
         opacity: 0.7,
         border: "2px solid white",

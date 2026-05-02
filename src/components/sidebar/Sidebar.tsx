@@ -7,8 +7,8 @@ import { Text } from "../features/text/Text";
 type Tab = "media" | "text";
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "media", label: "MEDIA", icon: <SlFilm size="20" /> },
-  { id: "text", label: "TEXT", icon: <MdTextFields size="20" /> },
+  { id: "media", label: "MEDIA", icon: <SlFilm size="16" /> },
+  { id: "text", label: "TEXT", icon: <MdTextFields size="16" /> },
 ];
 
 export const Sidebar = () => {
@@ -16,12 +16,12 @@ export const Sidebar = () => {
 
   return (
     <aside className="flex w-80 shrink-0  border-r bg-surface">
-      <div className="w-20 h-screen border-r py-6 px-2 flex flex-col gap-2">
+      <div className="w-20 h-screen border-r py-2 px-2 flex flex-col gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col justify-center items-center gap-1 border py-1 w-full cursor-pointer transition-colors ${
+            className={`flex flex-col justify-center items-center gap-1 border py-1.5 w-full cursor-pointer transition-colors ${
               activeTab === tab.id
                 ? "bg-white border-color-border-full text-text-color "
                 : "border-transparent border bg-surface text-text-color hover:bg-surface-hover hover:border-color-border-full"

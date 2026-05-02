@@ -96,10 +96,12 @@ interface EditorState {
 
   addClip: (clip: Clip) => void;
   addRow: (row: Row) => void;
+  createRowOfType: (type: ClipType) => Row;
 
   addMediaItem: (item: MediaItem) => void;
   removeMediaItem: (id: string) => void;
   addClipFromMedia: (mediaId: string) => void;
+  addTextClip: (label: string) => void;
 
   undo: () => void;
   redo: () => void;
@@ -120,11 +122,29 @@ const CLIP_COLORS: Record<ClipType, string> = {
   text: "#f59e0b",
 };
 
-const INITIAL_ROWS: Row[] = [
-  { id: "row-video-1", label: "Video 1", type: "video" },
-  { id: "row-video-2", label: "Video 2", type: "video" },
-  { id: "row-audio-1", label: "Audio 1", type: "audio" },
-];
+const INITIAL_ROWS: Row[] = [];
+
+function createRowLabel(type: ClipType, index: number): string {
+  return `${type.charAt(0).toUpperCase()}${type.slice(1)} ${index}`;
+}
+
+function createRow(rows: Row[], type: ClipType): Row {
+  const nextIndex = rows.filter((row) => row.type === type).length + 1;
+  const row: Row = {
+    id: `row-${type}-${nextIndex}`,
+    label: createRowLabel(type, nextIndex),
+    type,
+  };
+  rows.push(row);
+  return row;
+}
+
+function ensureRowForType(rows: Row[], type: ClipType): Row {
+  const existingRow = rows.find((row) => row.type === type);
+  if (existingRow) return existingRow;
+
+  return createRow(rows, type);
+}
 
 export const useEditorStore = create<EditorState>()(
   immer((set, get) => ({
@@ -163,6 +183,8 @@ export const useEditorStore = create<EditorState>()(
       const s = get();
       const clip = s.clips.find((c) => c.id === clipId);
       if (!clip) return;
+      const targetRow = s.rows.find((row) => row.id === toRowId);
+      if (!targetRow || targetRow.type !== clip.type) return;
       const cmd: Command = {
         type: "MOVE_CLIP",
         clipId,
@@ -263,9 +285,15 @@ export const useEditorStore = create<EditorState>()(
     },
 
     addClip: (clip) => {
-      const cmd: Command = { type: "ADD_CLIP", clip };
       set((draft) => {
-        draft.clips.push(clip);
+        const row =
+          draft.rows.find((existingRow) => existingRow.id === clip.rowId) ??
+          ensureRowForType(draft.rows, clip.type);
+        const clipToAdd =
+          row.id === clip.rowId ? clip : { ...clip, rowId: row.id };
+        const cmd: Command = { type: "ADD_CLIP", clip: clipToAdd };
+
+        draft.clips.push(clipToAdd);
         draft.duration = recalcDuration(draft.clips);
         draft.undoStack.push(cmd);
         draft.redoStack = [];
@@ -276,6 +304,14 @@ export const useEditorStore = create<EditorState>()(
       set((draft) => {
         draft.rows.push(row);
       });
+    },
+
+    createRowOfType: (type) => {
+      let createdRow!: Row;
+      set((draft) => {
+        createdRow = createRow(draft.rows, type);
+      });
+      return createdRow;
     },
 
     addMediaItem: (item) => {
@@ -296,27 +332,52 @@ export const useEditorStore = create<EditorState>()(
       const s = get();
       const media = s.mediaItems.find((m) => m.id === mediaId);
       if (!media) return;
-      const targetRow = s.rows.find((r) => r.type === media.type);
-      if (!targetRow) return;
-      const clipsOnRow = s.clips.filter((c) => c.rowId === targetRow.id);
-      const startTime = clipsOnRow.reduce(
-        (max, c) => Math.max(max, c.start + c.duration),
-        0,
-      );
-      const clip: Clip = {
-        id: generateId(),
-        rowId: targetRow.id,
-        start: startTime,
-        duration: media.duration,
-        label: media.name,
-        type: media.type,
-        color: CLIP_COLORS[media.type],
-        src: media.src,
-        trimStart: 0,
-        sourceDuration: media.duration,
-      };
-      const cmd: Command = { type: "ADD_CLIP", clip };
       set((draft) => {
+        const targetRow = ensureRowForType(draft.rows, media.type);
+        const startTime = draft.clips
+          .filter((clip) => clip.rowId === targetRow.id)
+          .reduce((max, clip) => Math.max(max, clip.start + clip.duration), 0);
+        const clip: Clip = {
+          id: generateId(),
+          rowId: targetRow.id,
+          start: startTime,
+          duration: media.duration,
+          label: media.name,
+          type: media.type,
+          color: CLIP_COLORS[media.type],
+          src: media.src,
+          trimStart: 0,
+          sourceDuration: media.duration,
+        };
+        const cmd: Command = { type: "ADD_CLIP", clip };
+
+        draft.clips.push(clip);
+        draft.duration = recalcDuration(draft.clips);
+        draft.undoStack.push(cmd);
+        draft.redoStack = [];
+      });
+    },
+
+    addTextClip: (label) => {
+      const normalizedLabel = label.trim() || "Text";
+      set((draft) => {
+        const targetRow = ensureRowForType(draft.rows, "text");
+        const startTime = draft.clips
+          .filter((clip) => clip.rowId === targetRow.id)
+          .reduce((max, clip) => Math.max(max, clip.start + clip.duration), 0);
+        const clip: Clip = {
+          id: generateId(),
+          rowId: targetRow.id,
+          start: startTime,
+          duration: 4,
+          label: normalizedLabel,
+          type: "text",
+          color: CLIP_COLORS.text,
+          trimStart: 0,
+          sourceDuration: 4,
+        };
+        const cmd: Command = { type: "ADD_CLIP", clip };
+
         draft.clips.push(clip);
         draft.duration = recalcDuration(draft.clips);
         draft.undoStack.push(cmd);

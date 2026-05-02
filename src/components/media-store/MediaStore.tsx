@@ -49,7 +49,7 @@ export const MediaStore = () => {
 
   return (
     <div className="flex flex-col gap-2 h-full">
-      <Button onClick={() => inputRef.current?.click()}>+ Add video</Button>
+      <Button onClick={() => inputRef.current?.click()}>+ Add media</Button>
       <input
         ref={inputRef}
         type="file"
@@ -66,7 +66,7 @@ export const MediaStore = () => {
         {mediaItems.map((item) => (
           <div
             key={item.id}
-            className="group flex items-center justify-between gap-2 border rounded px-2 py-1.5 hover:bg-gray-100"
+            className="group flex items-center justify-between gap-2 border px-2 py-1.5 hover:bg-gray-100"
           >
             <button
               onClick={() => addClipFromMedia(item.id)}

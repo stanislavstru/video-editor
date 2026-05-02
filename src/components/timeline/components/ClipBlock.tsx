@@ -1,12 +1,13 @@
 import { type PointerEvent as ReactPointerEvent } from "react";
-import type { Clip } from "../../../store/editorStore";
+import type { Clip, ClipType } from "../../../store/editorStore";
 import type { DragState } from "../types";
 import { timeToPx } from "../utils";
-import { ROW_HEIGHT, TRIM_HANDLE_WIDTH } from "../constants";
+import { getClipHeight, TRIM_HANDLE_WIDTH } from "../constants";
 
 export interface ClipBlockProps {
   clip: Clip;
   zoom: number;
+  rowType: ClipType;
   isSelected: boolean;
   dragState: DragState;
   onPointerDownClip: (e: ReactPointerEvent<HTMLDivElement>, clip: Clip) => void;
@@ -23,6 +24,7 @@ export interface ClipBlockProps {
 export function ClipBlock({
   clip,
   zoom,
+  rowType,
   isSelected,
   dragState,
   onPointerDownClip,
@@ -34,6 +36,7 @@ export function ClipBlock({
 
   const left = timeToPx(clip.start, zoom);
   const width = Math.max(timeToPx(clip.duration, zoom), 2);
+  const clipHeight = getClipHeight(rowType);
 
   return (
     <div
@@ -41,7 +44,7 @@ export function ClipBlock({
       style={{
         left,
         width,
-        height: ROW_HEIGHT - 8,
+        height: clipHeight,
         backgroundColor: clip.color,
         opacity: isDragging ? 0.35 : 1,
         outline: isSelected ? "2px solid white" : "none",

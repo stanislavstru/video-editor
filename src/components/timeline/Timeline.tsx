@@ -6,10 +6,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useEditorStore } from "../../store/editorStore";
-import type { Clip } from "../../store/editorStore";
+import type { Clip, Row } from "../../store/editorStore";
 import { timeToPx, pxToTime, snapTime, formatTime } from "./utils";
 import {
-  ROW_HEIGHT,
+  getClipHeight,
+  getRowHeight,
   ROW_LABEL_WIDTH,
   RULER_HEIGHT,
   SNAP_GRID,
@@ -18,6 +19,21 @@ import {
 import type { DragState } from "./types";
 import { Ruler } from "./components/Ruler";
 import { TrackRow } from "./components/TrackRow";
+
+const NEW_ROW_DROP_ZONE_HEIGHT = 48;
+
+function getRowsHeight(rows: Row[]) {
+  return rows.reduce((total, row) => total + getRowHeight(row.type), 0);
+}
+
+function getRowTop(rows: Row[], rowId: string) {
+  let top = 0;
+  for (const row of rows) {
+    if (row.id === rowId) return top;
+    top += getRowHeight(row.type);
+  }
+  return -1;
+}
 
 // ─── Timeline ─────────────────────────────────────────────────────────────────
 export function Timeline() {
@@ -34,6 +50,7 @@ export function Timeline() {
   const setZoom = useEditorStore((s) => s.setZoom);
   const selectClip = useEditorStore((s) => s.selectClip);
   const moveClip = useEditorStore((s) => s.moveClip);
+  const createRowOfType = useEditorStore((s) => s.createRowOfType);
   const trimClip = useEditorStore((s) => s.trimClip);
   const splitClip = useEditorStore((s) => s.splitClip);
   const deleteSelectedClip = useEditorStore((s) => s.deleteSelectedClip);
@@ -50,6 +67,7 @@ export function Timeline() {
   const [dragState, setDragState] = useState<DragState>({ kind: "idle" });
 
   const totalWidth = timeToPx(duration, zoom);
+  const rowsHeight = getRowsHeight(rows);
 
   // ─── Playback loop ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -154,6 +172,7 @@ export function Timeline() {
         offsetInsideClip,
         ghostLeft: timeToPx(clip.start, zoom),
         ghostRowId: clip.rowId,
+        ghostRowType: clip.type,
       });
 
       el.setPointerCapture(e.pointerId);
@@ -174,6 +193,8 @@ export function Timeline() {
         startPointerX: e.clientX,
         startClipStart: clip.start,
         startClipDuration: clip.duration,
+        startTrimStart: clip.trimStart,
+        sourceDuration: clip.sourceDuration,
       });
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -192,6 +213,8 @@ export function Timeline() {
         startPointerX: e.clientX,
         startClipStart: clip.start,
         startClipDuration: clip.duration,
+        startTrimStart: clip.trimStart,
+        sourceDuration: clip.sourceDuration,
       });
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
@@ -202,25 +225,35 @@ export function Timeline() {
   useEffect(() => {
     if (dragState.kind === "idle") return;
 
-    const rowElements: Array<{ rowId: string; top: number; bottom: number }> =
-      [];
+    const rowElements: Array<{
+      rowId: string;
+      type: Row["type"];
+      top: number;
+      bottom: number;
+    }> = [];
 
     const collectRowRects = () => {
       if (!scrollRef.current) return;
       const containerRect = scrollRef.current.getBoundingClientRect();
       const trackTop = containerRect.top + RULER_HEIGHT;
-      rows.forEach((row, i) => {
+      let currentTop = trackTop;
+      rows.forEach((row) => {
+        const rowHeight = getRowHeight(row.type);
         rowElements.push({
           rowId: row.id,
-          top: trackTop + i * ROW_HEIGHT,
-          bottom: trackTop + (i + 1) * ROW_HEIGHT,
+          type: row.type,
+          top: currentTop,
+          bottom: currentTop + rowHeight,
         });
+        currentTop += rowHeight;
       });
     };
     collectRowRects();
 
     const onPointerMove = (e: PointerEvent) => {
       if (dragState.kind === "moving") {
+        const clip = clips.find((currentClip) => currentClip.id === dragState.clipId);
+        if (!clip) return;
         const scrollLeft = scrollRef.current?.scrollLeft ?? 0;
         const containerLeft = scrollRef.current
           ? scrollRef.current.getBoundingClientRect().left + ROW_LABEL_WIDTH
@@ -232,12 +265,19 @@ export function Timeline() {
           SNAP_GRID,
         );
 
-        let hoveredRowId = dragState.startRowId;
+        let hoveredRowId: string | null = dragState.startRowId;
+        let ghostRowType = clip.type;
         for (const r of rowElements) {
+          if (r.type !== clip.type) continue;
           if (e.clientY >= r.top && e.clientY < r.bottom) {
             hoveredRowId = r.rowId;
             break;
           }
+        }
+
+        const lastRowBottom = rowElements[rowElements.length - 1]?.bottom;
+        if (lastRowBottom !== undefined && e.clientY >= lastRowBottom) {
+          hoveredRowId = null;
         }
 
         setDragState((prev) =>
@@ -246,9 +286,13 @@ export function Timeline() {
                 ...prev,
                 ghostLeft: timeToPx(newClipStart, zoom),
                 ghostRowId: hoveredRowId,
+                ghostRowType,
                 _pendingStart: newClipStart,
                 _pendingRowId: hoveredRowId,
-              } as DragState & { _pendingStart: number; _pendingRowId: string })
+              } as DragState & {
+                _pendingStart: number;
+                _pendingRowId: string | null;
+              })
             : prev,
         );
       } else if (dragState.kind === "trimming") {
@@ -262,23 +306,38 @@ export function Timeline() {
             dragState.startClipStart +
             dragState.startClipDuration -
             MIN_CLIP_DURATION;
+          // Can't move left edge further left than the source beginning
+          const minStart = Math.max(
+            0,
+            dragState.startClipStart - dragState.startTrimStart,
+          );
           const newStart = snapTime(
-            Math.max(0, Math.min(rawStart, maxStart)),
+            Math.max(minStart, Math.min(rawStart, maxStart)),
             SNAP_GRID,
           );
           const newDuration =
             dragState.startClipStart + dragState.startClipDuration - newStart;
+          const newTrimStart =
+            dragState.startTrimStart + (newStart - dragState.startClipStart);
           useEditorStore.setState((s) => ({
             clips: s.clips.map((c) =>
               c.id === dragState.clipId
-                ? { ...c, start: newStart, duration: newDuration }
+                ? {
+                    ...c,
+                    start: newStart,
+                    duration: newDuration,
+                    trimStart: newTrimStart,
+                  }
                 : c,
             ),
           }));
         } else {
           const rawDuration = dragState.startClipDuration + deltaSec;
+          // Can't extend beyond the available source material
+          const maxDuration =
+            dragState.sourceDuration - dragState.startTrimStart;
           const newDuration = snapTime(
-            Math.max(MIN_CLIP_DURATION, rawDuration),
+            Math.min(Math.max(MIN_CLIP_DURATION, rawDuration), maxDuration),
             SNAP_GRID,
           );
           useEditorStore.setState((s) => ({
@@ -294,10 +353,12 @@ export function Timeline() {
       if (dragState.kind === "moving") {
         const ds = dragState as DragState & {
           _pendingStart?: number;
-          _pendingRowId?: string;
+          _pendingRowId?: string | null;
         };
         const toStart = ds._pendingStart ?? dragState.startClipStart;
-        const toRowId = ds._pendingRowId ?? dragState.startRowId;
+        const createdRow =
+          ds._pendingRowId === null ? createRowOfType(dragState.ghostRowType) : null;
+        const toRowId = createdRow?.id ?? ds._pendingRowId ?? dragState.startRowId;
         moveClip(dragState.clipId, toRowId, toStart);
       } else if (dragState.kind === "trimming") {
         const clip = clips.find((c) => c.id === dragState.clipId);
@@ -314,7 +375,7 @@ export function Timeline() {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [dragState, zoom, rows, clips, moveClip, trimClip]);
+  }, [dragState, zoom, rows, clips, createRowOfType, moveClip, trimClip]);
 
   // ─── Row click (deselect) ─────────────────────────────────────────────────
   const onRowPointerDown = useCallback(
@@ -352,6 +413,8 @@ export function Timeline() {
     dragState.kind === "moving"
       ? (dragState as Extract<DragState, { kind: "moving" }>).ghostRowId
       : null;
+  const showNewRowDropZone =
+    dragState.kind === "moving" && dragState.ghostRowId === null;
 
   return (
     <div
@@ -439,7 +502,7 @@ export function Timeline() {
             style={{
               left: ROW_LABEL_WIDTH + timeToPx(currentTime, zoom),
               width: 1,
-              height: rows.length * ROW_HEIGHT,
+              height: rowsHeight,
               backgroundColor: "#e84040",
               transform: "translateX(-0.5px)",
             }}
@@ -462,25 +525,50 @@ export function Timeline() {
             />
           ))}
 
+          {showNewRowDropZone && (
+            <div className="flex" style={{ height: NEW_ROW_DROP_ZONE_HEIGHT }}>
+              <div
+                className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted/60"
+                style={{ width: ROW_LABEL_WIDTH, height: NEW_ROW_DROP_ZONE_HEIGHT }}
+              >
+                New {dragState.ghostRowType}
+              </div>
+              <div
+                className="relative border-b border-dashed border-border/80 bg-muted/30"
+                style={{
+                  width: totalWidth,
+                  height: NEW_ROW_DROP_ZONE_HEIGHT,
+                  flexShrink: 0,
+                }}
+              />
+            </div>
+          )}
+
           {/* Global ghost overlay positioned in correct row */}
           {dragState.kind === "moving" &&
             (() => {
               const ds = dragState as Extract<DragState, { kind: "moving" }>;
-              const ghostRowIndex = rows.findIndex(
-                (r) => r.id === ds.ghostRowId,
-              );
-              if (ghostRowIndex === -1) return null;
               const clip = clips.find((c) => c.id === ds.clipId);
               if (!clip) return null;
               const width = Math.max(timeToPx(clip.duration, zoom), 2);
+              const ghostRow = ds.ghostRowId
+                ? rows.find((row) => row.id === ds.ghostRowId)
+                : null;
+              const ghostTop = ds.ghostRowId
+                ? getRowTop(rows, ds.ghostRowId)
+                : rowsHeight;
+              const ghostHeight = ghostRow
+                ? getClipHeight(ghostRow.type)
+                : getClipHeight(ds.ghostRowType);
+              if (ghostTop === -1) return null;
               return (
                 <div
                   className="absolute rounded pointer-events-none z-40"
                   style={{
                     left: ROW_LABEL_WIDTH + ds.ghostLeft,
-                    top: ghostRowIndex * ROW_HEIGHT + 4,
+                    top: ghostTop + 4,
                     width,
-                    height: ROW_HEIGHT - 8,
+                    height: ghostHeight,
                     backgroundColor: clip.color,
                     opacity: 0.75,
                     border: "2px solid rgba(0,0,0,0.25)",
