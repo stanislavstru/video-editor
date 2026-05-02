@@ -21,14 +21,14 @@ export const Sidebar = () => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col justify-center items-center gap-1 border py-2 w-full cursor-pointer transition-colors ${
+            className={`flex flex-col justify-center items-center gap-1 border py-1 w-full cursor-pointer transition-colors ${
               activeTab === tab.id
                 ? "bg-white border-gray-800 text-gray-800"
                 : "border-transparent hover:bg-gray-200 text-gray-600"
             }`}
           >
             {tab.icon}
-            <span className="text-[10px] font-medium">{tab.label}</span>
+            <span className="text-xs font-medium">{tab.label}</span>
           </button>
         ))}
       </div>
