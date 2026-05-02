@@ -19,7 +19,7 @@ export function Ghost({ dragState, clips, zoom, rowType }: GhostProps) {
 
   return (
     <div
-      className="absolute top-1 rounded pointer-events-none z-40"
+      className="absolute top-1  pointer-events-none z-40"
       style={{
         left: dragState.ghostLeft,
         width,

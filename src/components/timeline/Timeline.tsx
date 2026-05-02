@@ -252,7 +252,9 @@ export function Timeline() {
 
     const onPointerMove = (e: PointerEvent) => {
       if (dragState.kind === "moving") {
-        const clip = clips.find((currentClip) => currentClip.id === dragState.clipId);
+        const clip = clips.find(
+          (currentClip) => currentClip.id === dragState.clipId,
+        );
         if (!clip) return;
         const scrollLeft = scrollRef.current?.scrollLeft ?? 0;
         const containerLeft = scrollRef.current
@@ -357,8 +359,11 @@ export function Timeline() {
         };
         const toStart = ds._pendingStart ?? dragState.startClipStart;
         const createdRow =
-          ds._pendingRowId === null ? createRowOfType(dragState.ghostRowType) : null;
-        const toRowId = createdRow?.id ?? ds._pendingRowId ?? dragState.startRowId;
+          ds._pendingRowId === null
+            ? createRowOfType(dragState.ghostRowType)
+            : null;
+        const toRowId =
+          createdRow?.id ?? ds._pendingRowId ?? dragState.startRowId;
         moveClip(dragState.clipId, toRowId, toStart);
       } else if (dragState.kind === "trimming") {
         const clip = clips.find((c) => c.id === dragState.clipId);
@@ -424,7 +429,7 @@ export function Timeline() {
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0">
         <button
-          className="px-3 py-1 rounded text-xs bg-muted hover:bg-muted/70 transition-colors"
+          className="px-3 py-1 text-xs bg-muted hover:bg-muted/70 transition-colors"
           onClick={() => setPlaying(!playing)}
         >
           {playing ? "⏸ Pause" : "▶ Play"}
@@ -446,14 +451,14 @@ export function Timeline() {
           {zoom.toFixed(0)}px/s
         </span>
         <button
-          className="px-2 py-1 rounded text-xs bg-muted hover:bg-muted/70 transition-colors"
+          className="px-2 py-1 text-xs bg-muted hover:bg-muted/70 transition-colors"
           onClick={undo}
           title="Undo (Cmd+Z)"
         >
           ↩
         </button>
         <button
-          className="px-2 py-1 rounded text-xs bg-muted hover:bg-muted/70 transition-colors"
+          className="px-2 py-1 text-xs bg-muted hover:bg-muted/70 transition-colors"
           onClick={redo}
           title="Redo (Cmd+Shift+Z)"
         >
@@ -529,7 +534,10 @@ export function Timeline() {
             <div className="flex" style={{ height: NEW_ROW_DROP_ZONE_HEIGHT }}>
               <div
                 className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted/60"
-                style={{ width: ROW_LABEL_WIDTH, height: NEW_ROW_DROP_ZONE_HEIGHT }}
+                style={{
+                  width: ROW_LABEL_WIDTH,
+                  height: NEW_ROW_DROP_ZONE_HEIGHT,
+                }}
               >
                 New {dragState.ghostRowType}
               </div>
@@ -563,7 +571,7 @@ export function Timeline() {
               if (ghostTop === -1) return null;
               return (
                 <div
-                  className="absolute rounded pointer-events-none z-40"
+                  className="absolute pointer-events-none z-40"
                   style={{
                     left: ROW_LABEL_WIDTH + ds.ghostLeft,
                     top: ghostTop + 4,

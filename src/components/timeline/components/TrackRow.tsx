@@ -80,7 +80,12 @@ export function TrackRow({
         ))}
 
         {isGhostRow && (
-          <Ghost dragState={dragState} clips={clips} zoom={zoom} rowType={row.type} />
+          <Ghost
+            dragState={dragState}
+            clips={clips}
+            zoom={zoom}
+            rowType={row.type}
+          />
         )}
       </div>
     </div>

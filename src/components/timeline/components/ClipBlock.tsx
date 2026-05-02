@@ -40,7 +40,7 @@ export function ClipBlock({
 
   return (
     <div
-      className="absolute top-1 rounded select-none group"
+      className="absolute top-1 select-none group"
       style={{
         left,
         width,
@@ -57,7 +57,7 @@ export function ClipBlock({
     >
       {/* Left trim handle */}
       <div
-        className="absolute top-0 left-0 h-full cursor-ew-resize z-10 flex items-center justify-center rounded-l"
+        className="absolute top-0 left-0 h-full cursor-ew-resize z-10 flex items-center justify-center "
         style={{ width: TRIM_HANDLE_WIDTH, backgroundColor: "rgba(0,0,0,0.3)" }}
         onPointerDown={(e) => {
           e.stopPropagation();
@@ -73,7 +73,7 @@ export function ClipBlock({
       </span>
       {/* Right trim handle */}
       <div
-        className="absolute top-0 right-0 h-full cursor-ew-resize z-10 flex items-center justify-center rounded-r"
+        className="absolute top-0 right-0 h-full cursor-ew-resize z-10 flex items-center justify-center "
         style={{ width: TRIM_HANDLE_WIDTH, backgroundColor: "rgba(0,0,0,0.3)" }}
         onPointerDown={(e) => {
           e.stopPropagation();

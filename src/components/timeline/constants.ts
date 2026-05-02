@@ -9,9 +9,9 @@ export const TRIM_HANDLE_WIDTH = 8; // px
 export const MIN_CLIP_DURATION = 0.2; // seconds
 
 export function getRowHeight(type: ClipType): number {
-	return type === "text" ? TEXT_ROW_HEIGHT : ROW_HEIGHT;
+  return type === "text" ? TEXT_ROW_HEIGHT : ROW_HEIGHT;
 }
 
 export function getClipHeight(type: ClipType): number {
-	return Math.max(getRowHeight(type) - 8, 20);
+  return Math.max(getRowHeight(type) - 8, 20);
 }
