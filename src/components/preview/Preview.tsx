@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore, type Clip } from "../../store/editorStore";
 import {
+  getActiveAudioClips,
   getActiveTextClips,
   getActiveVideoLayers,
   getMediaTime,
@@ -8,9 +9,15 @@ import {
 import { WebGLPreviewRenderer } from "./webglRenderer";
 
 const SEEK_EPSILON = 0.08;
+const AUDIO_SEEK_EPSILON = 0.12;
 
 interface ManagedVideo {
   element: HTMLVideoElement;
+  dispose: () => void;
+}
+
+interface ManagedAudio {
+  element: HTMLAudioElement;
   dispose: () => void;
 }
 
@@ -24,7 +31,9 @@ export const Preview = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<WebGLPreviewRenderer | null>(null);
   const videoRegistryRef = useRef<Map<string, ManagedVideo>>(new Map());
+  const audioRegistryRef = useRef<Map<string, ManagedAudio>>(new Map());
   const desiredMediaTimesRef = useRef<Map<string, number>>(new Map());
+  const desiredAudioTimesRef = useRef<Map<string, number>>(new Map());
   const activeVideoClipsRef = useRef<Clip[]>([]);
   const rafRef = useRef<number | null>(null);
 
@@ -36,6 +45,10 @@ export const Preview = () => {
   );
   const activeTextClips = useMemo(
     () => getActiveTextClips(clips, currentTime),
+    [clips, currentTime],
+  );
+  const activeAudioClips = useMemo(
+    () => getActiveAudioClips(clips, currentTime),
     [clips, currentTime],
   );
 
@@ -108,6 +121,26 @@ export const Preview = () => {
     }
   }, [clips]);
 
+  useEffect(() => {
+    const registry = audioRegistryRef.current;
+    const existingIds = new Set(
+      clips
+        .filter(
+          (clip) =>
+            (clip.type === "audio" || clip.type === "video") && !!clip.src,
+        )
+        .map((clip) => clip.id),
+    );
+
+    for (const [clipId, audio] of registry.entries()) {
+      if (!existingIds.has(clipId)) {
+        audio.dispose();
+        desiredAudioTimesRef.current.delete(clipId);
+        registry.delete(clipId);
+      }
+    }
+  }, [clips]);
+
   const getOrCreateVideo = (clip: Clip): HTMLVideoElement | null => {
     if (!clip.src) return null;
 
@@ -155,6 +188,28 @@ export const Preview = () => {
     return video;
   };
 
+  const getOrCreateAudio = (clip: Clip): HTMLAudioElement | null => {
+    if (!clip.src) return null;
+
+    const existing = audioRegistryRef.current.get(clip.id);
+    if (existing) return existing.element;
+
+    const audio = document.createElement("audio");
+    audio.src = clip.src;
+    audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
+
+    audioRegistryRef.current.set(clip.id, {
+      element: audio,
+      dispose: () => {
+        audio.pause();
+        audio.src = "";
+      },
+    });
+
+    return audio;
+  };
+
   useEffect(() => {
     const activeIds = new Set(activeVideoClips.map((clip) => clip.id));
 
@@ -193,6 +248,41 @@ export const Preview = () => {
   }, [activeVideoClips, currentTime, drawActiveFrame, playing]);
 
   useEffect(() => {
+    const activeIds = new Set(activeAudioClips.map((clip) => clip.id));
+
+    for (const [clipId, managed] of audioRegistryRef.current.entries()) {
+      if (!activeIds.has(clipId)) {
+        managed.element.pause();
+      }
+    }
+
+    for (const clip of activeAudioClips) {
+      const audio = getOrCreateAudio(clip);
+      if (!audio) continue;
+
+      const targetTime = getMediaTime(clip, currentTime);
+      desiredAudioTimesRef.current.set(clip.id, targetTime);
+      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        if (Math.abs(audio.currentTime - targetTime) > AUDIO_SEEK_EPSILON) {
+          try {
+            audio.currentTime = targetTime;
+          } catch {
+            // Ignore transient seek errors while media is loading.
+          }
+        }
+      }
+
+      if (playing) {
+        void audio.play().catch(() => {
+          // Ignore autoplay restrictions until user interaction occurs.
+        });
+      } else {
+        audio.pause();
+      }
+    }
+  }, [activeAudioClips, currentTime, playing]);
+
+  useEffect(() => {
     if (!playing) {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
@@ -221,8 +311,13 @@ export const Preview = () => {
       for (const managed of videoRegistryRef.current.values()) {
         managed.dispose();
       }
+      for (const managed of audioRegistryRef.current.values()) {
+        managed.dispose();
+      }
       videoRegistryRef.current.clear();
+      audioRegistryRef.current.clear();
       desiredMediaTimesRef.current.clear();
+      desiredAudioTimesRef.current.clear();
     };
   }, []);
 

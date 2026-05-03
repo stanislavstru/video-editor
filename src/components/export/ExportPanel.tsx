@@ -73,7 +73,7 @@ export const ExportPanel = () => {
       <span className="text-xs font-medium text-text-color">EXPORT</span>
       <p className="text-xs text-text-color">
         Duration: {formatSeconds(exportDuration)}s | Resolution: 1280x720 | FPS:
-        30 | Output format: WebM.
+        30 | Output format: WebM (video + audio).
       </p>
       <Button onClick={onExport} disabled={isExporting || exportDuration <= 0}>
         {isExporting ? "Exporting..." : "Start export"}

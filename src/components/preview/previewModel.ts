@@ -46,6 +46,18 @@ export function getActiveTextClips(clips: Clip[], currentTime: number): Clip[] {
   );
 }
 
+export function getActiveAudioClips(
+  clips: Clip[],
+  currentTime: number,
+): Clip[] {
+  return clips.filter(
+    (clip) =>
+      (clip.type === "audio" || clip.type === "video") &&
+      !!clip.src &&
+      isClipActive(clip, currentTime),
+  );
+}
+
 export function getMediaTime(clip: Clip, currentTime: number): number {
   const raw = currentTime - clip.start + clip.trimStart;
   const max = clip.sourceDuration > 0 ? clip.sourceDuration : clip.duration;
