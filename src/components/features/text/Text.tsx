@@ -4,17 +4,20 @@ import { Button } from "../../ui/button";
 
 export const Text = () => {
   const addTextClip = useEditorStore((s) => s.addTextClip);
+  const currentTime = useEditorStore((s) => s.currentTime);
   const [value, setValue] = useState("");
 
   const onAddText = () => {
-    addTextClip(value);
+    addTextClip(value, currentTime, 4);
     setValue("");
   };
 
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-3 p-2">
       <label className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-text-color">Text layer</span>
+        <span className="text-xs font-medium text-text-color uppercase">
+          Text layer
+        </span>
         <textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}

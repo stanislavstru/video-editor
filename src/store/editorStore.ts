@@ -105,7 +105,7 @@ interface EditorState {
   addMediaItem: (item: MediaItem) => void;
   removeMediaItem: (id: string) => void;
   addClipFromMedia: (mediaId: string) => void;
-  addTextClip: (label: string) => void;
+  addTextClip: (label: string, startAt?: number, duration?: number) => void;
 
   undo: () => void;
   redo: () => void;
@@ -362,23 +362,24 @@ export const useEditorStore = create<EditorState>()(
       });
     },
 
-    addTextClip: (label) => {
+    addTextClip: (label, startAt, duration) => {
       const normalizedLabel = label.trim() || "Text";
+      const currentTime = get().currentTime;
       set((draft) => {
         const targetRow = ensureRowForType(draft.rows, "text");
-        const startTime = draft.clips
-          .filter((clip) => clip.rowId === targetRow.id)
-          .reduce((max, clip) => Math.max(max, clip.start + clip.duration), 0);
+        const defaultDuration = 4;
+        const clipDuration = Math.max(0.2, duration ?? defaultDuration);
+        const startTime = Math.max(0, startAt ?? currentTime);
         const clip: Clip = {
           id: generateId(),
           rowId: targetRow.id,
           start: startTime,
-          duration: 4,
+          duration: clipDuration,
           label: normalizedLabel,
           type: "text",
           color: CLIP_COLORS.text,
           trimStart: 0,
-          sourceDuration: 4,
+          sourceDuration: clipDuration,
         };
         const cmd: Command = { type: "ADD_CLIP", clip };
 
