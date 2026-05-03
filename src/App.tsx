@@ -1,6 +1,7 @@
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { Preview } from "./components/preview/Preview";
 import { Timeline } from "./components/timeline/Timeline";
+import { Toaster } from "./components/ui/sonner";
 
 function App() {
   return (
@@ -15,6 +16,8 @@ function App() {
           <Timeline />
         </div>
       </div>
+
+      <Toaster />
     </div>
   );
 }

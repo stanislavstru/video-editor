@@ -1,8 +1,13 @@
 import { useRef, type ChangeEvent } from "react";
+import { toast } from "sonner";
 import { useEditorStore, type MediaItem } from "../../store/editorStore";
 import { Button } from "../ui/button";
 import { MediaItemCard } from "./components/MediaItemCard";
 import { generateId, loadVideoMetadata } from "./utils";
+
+function getFileFingerprint(file: File, type: MediaItem["type"]) {
+  return [type, file.name, file.size, file.lastModified].join(":");
+}
 
 export const MediaStore = () => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -14,7 +19,19 @@ export const MediaStore = () => {
   const onFiles = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    const existingFingerprints = new Set(
+      mediaItems.map((item) => item.fingerprint).filter(Boolean),
+    );
+    let skippedDuplicates = 0;
+
     for (const file of Array.from(files)) {
+      const type = file.type.startsWith("audio/") ? "audio" : "video";
+      const fingerprint = getFileFingerprint(file, type);
+      if (existingFingerprints.has(fingerprint)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+
       const src = URL.createObjectURL(file);
       try {
         const { duration } = await loadVideoMetadata(src);
@@ -23,13 +40,30 @@ export const MediaStore = () => {
           name: file.name,
           src,
           duration,
-          type: file.type.startsWith("audio/") ? "audio" : "video",
+          type,
+          fingerprint,
         };
         addMediaItem(item);
+        existingFingerprints.add(fingerprint);
       } catch {
         URL.revokeObjectURL(src);
       }
     }
+
+    if (skippedDuplicates > 0) {
+      toast.warning(
+        skippedDuplicates === 1
+          ? "This media file is already added"
+          : `${skippedDuplicates} media files are already added`,
+        {
+          description:
+            skippedDuplicates === 1
+              ? "Duplicate files are skipped automatically."
+              : "Duplicate files were skipped automatically.",
+        },
+      );
+    }
+
     e.target.value = "";
   };
 

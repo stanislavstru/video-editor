@@ -33,6 +33,7 @@ export interface MediaItem {
   src: string;
   duration: number;
   type: "video" | "audio";
+  fingerprint?: string;
 }
 
 export type Command =
