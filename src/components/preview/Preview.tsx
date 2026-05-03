@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore, type Clip } from "../../store/editorStore";
 import { DraggableTextOverlays } from "./components/DraggableTextOverlays";
+import { TextEditPanel } from "./components/TextEditPanel";
 import { PreviewOverlayMessages } from "./components/PreviewOverlayMessages";
 import {
   getActiveAudioClips,
@@ -32,6 +33,11 @@ export const Preview = () => {
   const updateTextClipPosition = useEditorStore(
     (s) => s.updateTextClipPosition,
   );
+  const deleteClip = useEditorStore((s) => s.deleteClip);
+  const updateClipLabel = useEditorStore((s) => s.updateClipLabel);
+  const updateTextClipStyle = useEditorStore((s) => s.updateTextClipStyle);
+
+  const [editingClipId, setEditingClipId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -347,7 +353,7 @@ export const Preview = () => {
   }, []);
 
   return (
-    <section className="flex h-full w-full items-center justify-center p-6">
+    <section className="relative flex h-full w-full items-center justify-center p-6">
       <div
         ref={containerRef}
         className="relative w-full max-w-5xl overflow-hidden border border-border bg-black"
@@ -360,6 +366,8 @@ export const Preview = () => {
           selectedClipId={selectedClipId}
           containerRef={containerRef}
           onUpdateTextClipPosition={updateTextClipPosition}
+          onDeleteClip={deleteClip}
+          onOpenEditor={(clipId) => setEditingClipId(clipId)}
         />
 
         <PreviewOverlayMessages
@@ -367,6 +375,23 @@ export const Preview = () => {
           hasActiveVideos={activeVideoClips.length > 0}
         />
       </div>
+
+      {editingClipId !== null &&
+        (() => {
+          const clip = activeTextClips.find((c) => c.id === editingClipId);
+          if (!clip) return null;
+          return (
+            <TextEditPanel
+              key={editingClipId}
+              clip={clip}
+              onClose={() => setEditingClipId(null)}
+              onUpdateLabel={(label) => updateClipLabel(editingClipId, label)}
+              onUpdateStyle={(color, size) =>
+                updateTextClipStyle(editingClipId, color, size)
+              }
+            />
+          );
+        })()}
     </section>
   );
 };

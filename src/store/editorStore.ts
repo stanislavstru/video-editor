@@ -25,6 +25,10 @@ export interface Clip {
   /** Normalized text position on preview/export canvas, 0..1 */
   textX?: number;
   textY?: number;
+  /** Text overlay color (CSS color string) */
+  textColor?: string;
+  /** Text overlay font size in px */
+  textSize?: number;
 }
 
 export interface Row {
@@ -113,6 +117,9 @@ interface EditorState {
   addClipFromMedia: (mediaId: string) => void;
   addTextClip: (label: string, startAt?: number, duration?: number) => void;
   updateTextClipPosition: (clipId: string, x: number, y: number) => void;
+  deleteClip: (clipId: string) => void;
+  updateClipLabel: (clipId: string, label: string) => void;
+  updateTextClipStyle: (clipId: string, color: string, size: number) => void;
 
   undo: () => void;
   redo: () => void;
@@ -441,6 +448,39 @@ export const useEditorStore = create<EditorState>()(
         if (!clip || clip.type !== "text") return;
         clip.textX = clampedX;
         clip.textY = clampedY;
+      });
+    },
+
+    deleteClip: (clipId) => {
+      const s = get();
+      const clip = s.clips.find((c) => c.id === clipId);
+      if (!clip) return;
+      const cmd: Command = { type: "REMOVE_CLIP", clip };
+      set((draft) => {
+        draft.clips = draft.clips.filter((c) => c.id !== clipId);
+        if (draft.selectedClipId === clipId) draft.selectedClipId = null;
+        draft.undoStack.push(cmd);
+        draft.redoStack = [];
+        draft.duration = recalcDuration(draft.clips);
+      });
+    },
+
+    updateClipLabel: (clipId, label) => {
+      const normalized = label.trim();
+      if (!normalized) return;
+      set((draft) => {
+        const clip = draft.clips.find((c) => c.id === clipId);
+        if (!clip) return;
+        clip.label = normalized;
+      });
+    },
+
+    updateTextClipStyle: (clipId, color, size) => {
+      set((draft) => {
+        const clip = draft.clips.find((c) => c.id === clipId);
+        if (!clip || clip.type !== "text") return;
+        clip.textColor = color;
+        clip.textSize = Math.max(10, Math.min(120, size));
       });
     },
 

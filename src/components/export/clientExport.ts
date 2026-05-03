@@ -148,51 +148,22 @@ function drawTextOverlays(
 ) {
   if (textClips.length === 0) return;
 
-  const maxWidth = width * 0.8;
-  const fontSize = 18;
-  const lineHeight = 24;
-  const boxPaddingX = 12;
-
-  ctx.font = `${500} ${fontSize}px sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
   const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-  const wrapLines = (text: string, maxLineWidth: number): string[] => {
-    const normalized = text.trim();
-    if (!normalized) return [""];
-
-    const words = normalized.split(/\s+/);
-    const lines: string[] = [];
-    let currentLine = words[0] ?? "";
-
-    for (let i = 1; i < words.length; i += 1) {
-      const candidate = `${currentLine} ${words[i]}`;
-      if (ctx.measureText(candidate).width <= maxLineWidth) {
-        currentLine = candidate;
-      } else {
-        lines.push(currentLine);
-        currentLine = words[i];
-      }
-    }
-
-    lines.push(currentLine);
-    return lines;
-  };
 
   textClips.forEach((clip, index) => {
     const text = clip.label;
-    const lines = wrapLines(text, Math.max(1, maxWidth - boxPaddingX * 2));
-
+    const fontSize = clip.textSize ?? 18;
+    const textColor = clip.textColor ?? "#ffffff";
     const fallbackY = 0.84 - index * 0.1;
     const x = clamp01(clip.textX ?? 0.5) * width;
     const y = clamp01(clip.textY ?? fallbackY) * height;
 
-    ctx.fillStyle = "#ffffff";
-    const firstLineY = y - ((lines.length - 1) * lineHeight) / 2;
-    lines.forEach((line, lineIndex) => {
-      ctx.fillText(line, x, firstLineY + lineIndex * lineHeight);
-    });
+    ctx.font = `500 ${fontSize}px sans-serif`;
+    ctx.fillStyle = textColor;
+    ctx.fillText(text, x, y);
   });
 }
 

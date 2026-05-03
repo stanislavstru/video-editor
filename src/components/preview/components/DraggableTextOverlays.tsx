@@ -5,6 +5,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import type { Clip } from "../../../store/editorStore";
 
 interface DraggableTextOverlaysProps {
@@ -12,6 +13,8 @@ interface DraggableTextOverlaysProps {
   selectedClipId: string | null;
   containerRef: RefObject<HTMLDivElement | null>;
   onUpdateTextClipPosition: (clipId: string, x: number, y: number) => void;
+  onDeleteClip: (clipId: string) => void;
+  onOpenEditor: (clipId: string) => void;
 }
 
 type DragState = {
@@ -37,6 +40,8 @@ export function DraggableTextOverlays({
   selectedClipId,
   containerRef,
   onUpdateTextClipPosition,
+  onDeleteClip,
+  onOpenEditor,
 }: DraggableTextOverlaysProps) {
   const textDragRef = useRef<DragState | null>(null);
   const textElementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -100,71 +105,118 @@ export function DraggableTextOverlays({
         return (
           <div
             key={clip.id}
-            role="button"
-            tabIndex={0}
-            ref={(el) => {
-              if (el) {
-                textElementRefs.current.set(clip.id, el);
-              } else {
-                textElementRefs.current.delete(clip.id);
-              }
-            }}
-            className={`absolute max-w-[80%] -translate-x-1/2 -translate-y-1/2 cursor-grab border-2 border-transparent bg-transparent px-3 py-1.5 text-center text-lg font-medium text-white select-none outline-none ${draggingTextClipId === clip.id ? "cursor-grabbing" : ""} ${isHighlighted ? "border-[#00ff00] shadow-[0_0_0_2px_rgba(0,255,0,0.55)]" : ""}`}
+            className="absolute -translate-x-1/2 -translate-y-1/2"
             style={{
               left: `${position.x * 100}%`,
               top: `${position.y * 100}%`,
             }}
-            onFocus={() => setFocusedTextClipId(clip.id)}
-            onBlur={() => {
-              setFocusedTextClipId((prev) => (prev === clip.id ? null : prev));
-            }}
-            onPointerDown={(e) => {
-              const container = containerRef.current;
-              if (!container) return;
+          >
+            {/* Toolbar — shown when focused or dragging */}
+            {isHighlighted && (
+              <div
+                className="absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 flex items-center gap-0.5 rounded-sm bg-white px-1 py-0.5 shadow-md"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }}
+              >
+                <button
+                  type="button"
+                  className="flex items-center justify-center rounded p-1 text-neutral-600 hover:bg-neutral-100"
+                  title="Edit text"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenEditor(clip.id);
+                  }}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center justify-center rounded p-1 text-neutral-600 hover:bg-neutral-100 hover:text-red-500"
+                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteClip(clip.id);
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
 
-              const rect = container.getBoundingClientRect();
-              if (rect.width <= 0 || rect.height <= 0) return;
+            {/* Text overlay */}
+            <div
+              role="button"
+              tabIndex={0}
+              ref={(el) => {
+                if (el) {
+                  textElementRefs.current.set(clip.id, el);
+                } else {
+                  textElementRefs.current.delete(clip.id);
+                }
+              }}
+              className={`cursor-grab whitespace-nowrap border-2  bg-transparent px-3 py-1.5 text-center select-none outline-none ${draggingTextClipId === clip.id ? "cursor-grabbing" : ""} ${isHighlighted ? "border-[#00ff00]" : "border-transparent"}`}
+              style={{
+                color: clip.textColor ?? "#ffffff",
+                fontSize: `${clip.textSize ?? 18}px`,
+                fontFamily: "sans-serif",
+                fontWeight: 500,
+              }}
+              onFocus={() => setFocusedTextClipId(clip.id)}
+              onBlur={() => {
+                setFocusedTextClipId((prev) =>
+                  prev === clip.id ? null : prev,
+                );
+              }}
+              onPointerDown={(e) => {
+                const container = containerRef.current;
+                if (!container) return;
 
-              const pointerX = (e.clientX - rect.left) / rect.width;
-              const pointerY = (e.clientY - rect.top) / rect.height;
-              const { x, y } = getTextPosition(clip, index);
+                const rect = container.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
 
-              textDragRef.current = {
-                clipId: clip.id,
-                offsetX: pointerX - x,
-                offsetY: pointerY - y,
-              };
-              setDraggingTextClipId(clip.id);
-              setFocusedTextClipId(clip.id);
-              e.currentTarget.focus();
+                const pointerX = (e.clientX - rect.left) / rect.width;
+                const pointerY = (e.clientY - rect.top) / rect.height;
+                const { x, y } = getTextPosition(clip, index);
 
-              e.currentTarget.setPointerCapture(e.pointerId);
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            onPointerMove={(e) => {
-              if (textDragRef.current?.clipId !== clip.id) return;
-              updateDraggedTextPosition(e.clientX, e.clientY);
-            }}
-            onPointerUp={(e) => {
-              if (textDragRef.current?.clipId === clip.id) {
+                textDragRef.current = {
+                  clipId: clip.id,
+                  offsetX: pointerX - x,
+                  offsetY: pointerY - y,
+                };
+                setDraggingTextClipId(clip.id);
+                setFocusedTextClipId(clip.id);
+                e.currentTarget.focus();
+
+                e.currentTarget.setPointerCapture(e.pointerId);
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+              onPointerMove={(e) => {
+                if (textDragRef.current?.clipId !== clip.id) return;
                 updateDraggedTextPosition(e.clientX, e.clientY);
+              }}
+              onPointerUp={(e) => {
+                if (textDragRef.current?.clipId === clip.id) {
+                  updateDraggedTextPosition(e.clientX, e.clientY);
+                  textDragRef.current = null;
+                  setDraggingTextClipId(null);
+                }
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+              onPointerCancel={(e) => {
                 textDragRef.current = null;
                 setDraggingTextClipId(null);
-              }
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-            }}
-            onPointerCancel={(e) => {
-              textDragRef.current = null;
-              setDraggingTextClipId(null);
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-            }}
-          >
-            {clip.label}
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+            >
+              {clip.label}
+            </div>
           </div>
         );
       })}
