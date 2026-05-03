@@ -15,14 +15,21 @@ interface ExportOptions {
   onProgress?: (value: number) => void;
 }
 
-const AUDIO_START_DELAY_SECONDS = 0.15;
-
-function sleepFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
+const AUDIO_START_LEAD_SECONDS = 0.03;
+const EXPORT_TAIL_PADDING_MS = 80;
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function emitCanvasFrame(track: MediaStreamTrack) {
+  const captureTrack = track as CanvasCaptureMediaStreamTrack & {
+    requestFrame?: () => void;
+  };
+
+  if (typeof captureTrack.requestFrame === "function") {
+    captureTrack.requestFrame();
+  }
 }
 
 function decodeAudioData(
@@ -123,6 +130,7 @@ async function prepareAudioMix(
   clips: Clip[],
   audioContext: AudioContext,
   destination: MediaStreamAudioDestinationNode,
+  mixStartAt: number,
 ): Promise<AudioBufferSourceNode[]> {
   const sourceNodes: AudioBufferSourceNode[] = [];
   const decodableClips = clips.filter(
@@ -153,8 +161,6 @@ async function prepareAudioMix(
     }
   }
 
-  const startAt = audioContext.currentTime + AUDIO_START_DELAY_SECONDS;
-
   for (const clip of decodableClips) {
     const buffer = bufferCache.get(clip.src!);
     if (!buffer) continue;
@@ -172,7 +178,7 @@ async function prepareAudioMix(
 
     source.connect(gain);
     gain.connect(masterGain);
-    source.start(startAt + clip.start, offset, playbackDuration);
+    source.start(mixStartAt + clip.start, offset, playbackDuration);
     sourceNodes.push(source);
   }
 
@@ -270,6 +276,37 @@ async function seekVideoToTime(
   await seekPromise;
 }
 
+async function renderFrameAtTime(
+  rows: Row[],
+  clips: Clip[],
+  currentTime: number,
+  videoElements: Map<string, HTMLVideoElement>,
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) {
+  const activeVideos = getActiveVideoLayers(rows, clips, currentTime);
+  const activeTexts = getActiveTextClips(clips, currentTime);
+
+  const seekTasks: Promise<void>[] = [];
+  for (const clip of activeVideos) {
+    const video = videoElements.get(clip.id);
+    if (!video) continue;
+    const mediaTime = getMediaTime(clip, currentTime);
+    seekTasks.push(seekVideoToTime(video, mediaTime));
+  }
+
+  await Promise.all(seekTasks);
+
+  drawBackground(ctx, width, height);
+  for (const clip of activeVideos) {
+    const video = videoElements.get(clip.id);
+    if (!video) continue;
+    drawVideoContain(ctx, video, width, height);
+  }
+  drawTextOverlays(ctx, activeTexts, width, height);
+}
+
 export async function exportTimelineToWebM(
   options: ExportOptions,
 ): Promise<Blob> {
@@ -320,48 +357,51 @@ export async function exportTimelineToWebM(
   }
 
   let audioSources: AudioBufferSourceNode[] = [];
+
+  const frameDuration = 1 / fps;
+  const frameDurationMs = frameDuration * 1000;
+  const totalFrames = Math.max(1, Math.ceil(duration * fps));
+
+  await renderFrameAtTime(rows, clips, 0, videoElements, ctx, width, height);
+  emitCanvasFrame(videoTrack);
+
+  recorder.start();
+  const exportStartWall = performance.now();
+  const audioMixStartAt = audioContext.currentTime + AUDIO_START_LEAD_SECONDS;
+
   try {
-    audioSources = await prepareAudioMix(clips, audioContext, audioDestination);
+    audioSources = await prepareAudioMix(
+      clips,
+      audioContext,
+      audioDestination,
+      audioMixStartAt,
+    );
   } catch {
     audioSources = [];
   }
 
-  recorder.start();
-  await wait(AUDIO_START_DELAY_SECONDS * 1000);
+  onProgress?.(1 / totalFrames);
 
-  const frameDuration = 1 / fps;
-  const totalFrames = Math.max(1, Math.ceil(duration * fps));
-
-  for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+  for (let frameIndex = 1; frameIndex < totalFrames; frameIndex += 1) {
     const t = frameIndex * frameDuration;
-    const activeVideos = getActiveVideoLayers(rows, clips, t);
-    const activeTexts = getActiveTextClips(clips, t);
-
-    const seekTasks: Promise<void>[] = [];
-    for (const clip of activeVideos) {
-      const video = videoElements.get(clip.id);
-      if (!video) continue;
-      const mediaTime = getMediaTime(clip, t);
-      seekTasks.push(seekVideoToTime(video, mediaTime));
-    }
-
-    await Promise.all(seekTasks);
-
-    drawBackground(ctx, width, height);
-    for (const clip of activeVideos) {
-      const video = videoElements.get(clip.id);
-      if (!video) continue;
-      drawVideoContain(ctx, video, width, height);
-    }
-    drawTextOverlays(ctx, activeTexts, width, height);
+    await renderFrameAtTime(rows, clips, t, videoElements, ctx, width, height);
+    emitCanvasFrame(videoTrack);
 
     onProgress?.((frameIndex + 1) / totalFrames);
 
-    await sleepFrame();
-    await wait(frameDuration * 1000);
+    const targetWall = exportStartWall + frameIndex * frameDurationMs;
+    const remaining = targetWall - performance.now();
+    if (remaining > 0) {
+      await wait(remaining);
+    }
   }
 
-  await wait(120);
+  const expectedEndWall =
+    exportStartWall + duration * 1000 + EXPORT_TAIL_PADDING_MS;
+  const tailWait = expectedEndWall - performance.now();
+  if (tailWait > 0) {
+    await wait(tailWait);
+  }
 
   const result = await new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => {

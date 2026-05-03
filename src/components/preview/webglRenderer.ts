@@ -1,9 +1,10 @@
 const VERTEX_SHADER_SOURCE = `
 attribute vec2 a_position;
+attribute vec2 a_texCoord;
 varying vec2 v_uv;
 
 void main() {
-  v_uv = (a_position + 1.0) * 0.5;
+  v_uv = a_texCoord;
   gl_Position = vec4(a_position, 0.0, 1.0);
 }
 `;
@@ -18,9 +19,8 @@ uniform vec2 u_resolution;
 varying vec2 v_uv;
 
 void main() {
-  vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
   if (u_hasTexture) {
-    vec4 color = texture2D(u_texture, uv);
+    vec4 color = texture2D(u_texture, v_uv);
     gl_FragColor = vec4(color.rgb, color.a * u_opacity);
     return;
   }
@@ -92,6 +92,7 @@ export class WebGLPreviewRenderer {
   private readonly gl: WebGLRenderingContext;
   private readonly program: WebGLProgram;
   private readonly positionBuffer: WebGLBuffer;
+  private readonly texCoordBuffer: WebGLBuffer;
   private readonly texture: WebGLTexture;
   private readonly hasTextureLocation: WebGLUniformLocation;
   private readonly opacityLocation: WebGLUniformLocation;
@@ -110,6 +111,7 @@ export class WebGLPreviewRenderer {
 
     const program = createProgram(gl);
     const positionLocation = gl.getAttribLocation(program, "a_position");
+    const texCoordLocation = gl.getAttribLocation(program, "a_texCoord");
     const hasTextureLocation = gl.getUniformLocation(program, "u_hasTexture");
     const opacityLocation = gl.getUniformLocation(program, "u_opacity");
     const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
@@ -125,8 +127,9 @@ export class WebGLPreviewRenderer {
     }
 
     const positionBuffer = gl.createBuffer();
+    const texCoordBuffer = gl.createBuffer();
     const texture = gl.createTexture();
-    if (!positionBuffer || !texture) {
+    if (!positionBuffer || !texCoordBuffer || !texture) {
       throw new Error("Failed to create WebGL buffers");
     }
 
@@ -134,6 +137,7 @@ export class WebGLPreviewRenderer {
     this.gl = gl;
     this.program = program;
     this.positionBuffer = positionBuffer;
+    this.texCoordBuffer = texCoordBuffer;
     this.texture = texture;
     this.hasTextureLocation = hasTextureLocation;
     this.opacityLocation = opacityLocation;
@@ -153,13 +157,24 @@ export class WebGLPreviewRenderer {
     gl.enableVertexAttribArray(positionLocation);
     gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      // Coordinates keep X orientation normal and flip Y exactly once.
+      new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]),
+      gl.STATIC_DRAW,
+    );
+
+    gl.enableVertexAttribArray(texCoordLocation);
+    gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -218,6 +233,7 @@ export class WebGLPreviewRenderer {
     const gl = this.gl;
     gl.deleteTexture(this.texture);
     gl.deleteBuffer(this.positionBuffer);
+    gl.deleteBuffer(this.texCoordBuffer);
     gl.deleteProgram(this.program);
   }
 }

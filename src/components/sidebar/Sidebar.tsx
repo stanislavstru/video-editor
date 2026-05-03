@@ -17,7 +17,7 @@ export const Sidebar = () => {
   const [activeTab, setActiveTab] = useState<Tab>("media");
 
   return (
-    <aside className="flex w-80 shrink-0  border-r bg-surface">
+    <aside className="flex w-96 shrink-0  border-r bg-surface">
       <div className="w-20 h-screen border-r py-2 px-2 flex flex-col gap-2">
         {tabs.map((tab) => (
           <button

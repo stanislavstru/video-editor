@@ -21,6 +21,8 @@ import { Ruler } from "./components/Ruler";
 import { TrackRow } from "./components/TrackRow";
 
 const NEW_ROW_DROP_ZONE_HEIGHT = 48;
+const MIN_TIMELINE_ZOOM = 2;
+const MAX_TIMELINE_ZOOM = 500;
 
 function getRowsHeight(rows: Row[]) {
   return rows.reduce((total, row) => total + getRowHeight(row.type), 0);
@@ -441,14 +443,15 @@ export function Timeline() {
         <span className="text-xs text-muted-foreground">Zoom</span>
         <input
           type="range"
-          min={10}
-          max={400}
+          min={MIN_TIMELINE_ZOOM}
+          max={MAX_TIMELINE_ZOOM}
+          step={0.5}
           value={zoom}
           onChange={(e) => setZoom(Number(e.target.value))}
           className="w-24 accent-brand"
         />
         <span className="text-xs text-muted-foreground font-mono w-12">
-          {zoom.toFixed(0)}px/s
+          {zoom < 10 ? zoom.toFixed(1) : zoom.toFixed(0)}px/s
         </span>
         <button
           className="px-2 py-1 text-xs bg-muted hover:bg-muted/70 transition-colors"

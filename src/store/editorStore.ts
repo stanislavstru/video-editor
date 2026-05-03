@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 
+const MIN_ZOOM = 2;
+const MAX_ZOOM = 500;
+
 export type ClipType = "video" | "audio" | "text";
 
 export interface Clip {
@@ -172,7 +175,7 @@ export const useEditorStore = create<EditorState>()(
 
     setZoom: (z) =>
       set((s) => {
-        s.zoom = Math.max(10, Math.min(500, z));
+        s.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
       }),
 
     selectClip: (id) =>
