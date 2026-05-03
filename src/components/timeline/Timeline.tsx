@@ -54,6 +54,7 @@ export function Timeline() {
   const moveClip = useEditorStore((s) => s.moveClip);
   const createRowOfType = useEditorStore((s) => s.createRowOfType);
   const toggleRowMuted = useEditorStore((s) => s.toggleRowMuted);
+  const deleteRow = useEditorStore((s) => s.deleteRow);
   const trimClip = useEditorStore((s) => s.trimClip);
   const splitClip = useEditorStore((s) => s.splitClip);
   const deleteSelectedClip = useEditorStore((s) => s.deleteSelectedClip);
@@ -532,6 +533,7 @@ export function Timeline() {
               onPointerDownTrimRight={onPointerDownTrimRight}
               onRowPointerDown={onRowPointerDown}
               onToggleRowMuted={toggleRowMuted}
+              onDeleteRow={deleteRow}
             />
           ))}
 

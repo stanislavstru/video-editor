@@ -22,6 +22,9 @@ export interface Clip {
   trimStart: number;
   /** Original full duration of the source */
   sourceDuration: number;
+  /** Normalized text position on preview/export canvas, 0..1 */
+  textX?: number;
+  textY?: number;
 }
 
 export interface Row {
@@ -103,11 +106,13 @@ interface EditorState {
   addRow: (row: Row) => void;
   createRowOfType: (type: ClipType) => Row;
   toggleRowMuted: (rowId: string) => void;
+  deleteRow: (rowId: string) => void;
 
   addMediaItem: (item: MediaItem) => void;
   removeMediaItem: (id: string) => void;
   addClipFromMedia: (mediaId: string) => void;
   addTextClip: (label: string, startAt?: number, duration?: number) => void;
+  updateTextClipPosition: (clipId: string, x: number, y: number) => void;
 
   undo: () => void;
   redo: () => void;
@@ -329,6 +334,28 @@ export const useEditorStore = create<EditorState>()(
       });
     },
 
+    deleteRow: (rowId) => {
+      set((draft) => {
+        const rowExists = draft.rows.some((row) => row.id === rowId);
+        if (!rowExists) return;
+
+        const removedClipIds = new Set(
+          draft.clips
+            .filter((clip) => clip.rowId === rowId)
+            .map((clip) => clip.id),
+        );
+
+        draft.rows = draft.rows.filter((row) => row.id !== rowId);
+        draft.clips = draft.clips.filter((clip) => clip.rowId !== rowId);
+
+        if (draft.selectedClipId && removedClipIds.has(draft.selectedClipId)) {
+          draft.selectedClipId = null;
+        }
+
+        draft.duration = recalcDuration(draft.clips);
+      });
+    },
+
     addMediaItem: (item) => {
       set((draft) => {
         draft.mediaItems.push(item);
@@ -392,13 +419,28 @@ export const useEditorStore = create<EditorState>()(
           color: CLIP_COLORS.text,
           trimStart: 0,
           sourceDuration: clipDuration,
+          textX: 0.5,
+          textY: 0.84,
         };
         const cmd: Command = { type: "ADD_CLIP", clip };
 
         draft.clips.push(clip);
+        draft.selectedClipId = clip.id;
         draft.duration = recalcDuration(draft.clips);
         draft.undoStack.push(cmd);
         draft.redoStack = [];
+      });
+    },
+
+    updateTextClipPosition: (clipId, x, y) => {
+      const clampedX = Math.max(0, Math.min(1, x));
+      const clampedY = Math.max(0, Math.min(1, y));
+
+      set((draft) => {
+        const clip = draft.clips.find((c) => c.id === clipId);
+        if (!clip || clip.type !== "text") return;
+        clip.textX = clampedX;
+        clip.textY = clampedY;
       });
     },
 

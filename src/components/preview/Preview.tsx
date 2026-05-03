@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorStore, type Clip } from "../../store/editorStore";
+import { DraggableTextOverlays } from "./components/DraggableTextOverlays";
+import { PreviewOverlayMessages } from "./components/PreviewOverlayMessages";
 import {
   getActiveAudioClips,
   getActiveTextClips,
@@ -26,6 +28,10 @@ export const Preview = () => {
   const clips = useEditorStore((s) => s.clips);
   const currentTime = useEditorStore((s) => s.currentTime);
   const playing = useEditorStore((s) => s.playing);
+  const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const updateTextClipPosition = useEditorStore(
+    (s) => s.updateTextClipPosition,
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -98,9 +104,11 @@ export const Preview = () => {
         rendererRef.current = null;
       };
     } catch (error) {
-      setInitError(
-        error instanceof Error ? error.message : "Failed to init WebGL",
-      );
+      const message =
+        error instanceof Error ? error.message : "Failed to init WebGL";
+      queueMicrotask(() => {
+        setInitError(message);
+      });
     }
   }, [drawActiveFrame]);
 
@@ -141,74 +149,80 @@ export const Preview = () => {
     }
   }, [clips]);
 
-  const getOrCreateVideo = (clip: Clip): HTMLVideoElement | null => {
-    if (!clip.src) return null;
+  const getOrCreateVideo = useCallback(
+    (clip: Clip): HTMLVideoElement | null => {
+      if (!clip.src) return null;
 
-    const existing = videoRegistryRef.current.get(clip.id);
-    if (existing) return existing.element;
+      const existing = videoRegistryRef.current.get(clip.id);
+      if (existing) return existing.element;
 
-    const video = document.createElement("video");
-    video.src = clip.src;
-    video.preload = "auto";
-    video.muted = true;
-    video.playsInline = true;
-    video.crossOrigin = "anonymous";
+      const video = document.createElement("video");
+      video.src = clip.src;
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = "anonymous";
 
-    const syncAndDraw = () => {
-      const desired = desiredMediaTimesRef.current.get(clip.id);
-      if (
-        typeof desired === "number" &&
-        video.readyState >= HTMLMediaElement.HAVE_METADATA
-      ) {
-        if (Math.abs(video.currentTime - desired) > SEEK_EPSILON) {
-          try {
-            video.currentTime = desired;
-          } catch {
-            // Ignore seek errors while metadata is still stabilizing.
+      const syncAndDraw = () => {
+        const desired = desiredMediaTimesRef.current.get(clip.id);
+        if (
+          typeof desired === "number" &&
+          video.readyState >= HTMLMediaElement.HAVE_METADATA
+        ) {
+          if (Math.abs(video.currentTime - desired) > SEEK_EPSILON) {
+            try {
+              video.currentTime = desired;
+            } catch {
+              // Ignore seek errors while metadata is still stabilizing.
+            }
           }
         }
-      }
-      drawActiveFrame();
-    };
+        drawActiveFrame();
+      };
 
-    video.addEventListener("loadedmetadata", syncAndDraw);
-    video.addEventListener("seeked", drawActiveFrame);
-    video.addEventListener("canplay", drawActiveFrame);
+      video.addEventListener("loadedmetadata", syncAndDraw);
+      video.addEventListener("seeked", drawActiveFrame);
+      video.addEventListener("canplay", drawActiveFrame);
 
-    videoRegistryRef.current.set(clip.id, {
-      element: video,
-      dispose: () => {
-        video.removeEventListener("loadedmetadata", syncAndDraw);
-        video.removeEventListener("seeked", drawActiveFrame);
-        video.removeEventListener("canplay", drawActiveFrame);
-        video.pause();
-        video.src = "";
-      },
-    });
-    return video;
-  };
+      videoRegistryRef.current.set(clip.id, {
+        element: video,
+        dispose: () => {
+          video.removeEventListener("loadedmetadata", syncAndDraw);
+          video.removeEventListener("seeked", drawActiveFrame);
+          video.removeEventListener("canplay", drawActiveFrame);
+          video.pause();
+          video.src = "";
+        },
+      });
+      return video;
+    },
+    [drawActiveFrame],
+  );
 
-  const getOrCreateAudio = (clip: Clip): HTMLAudioElement | null => {
-    if (!clip.src) return null;
+  const getOrCreateAudio = useCallback(
+    (clip: Clip): HTMLAudioElement | null => {
+      if (!clip.src) return null;
 
-    const existing = audioRegistryRef.current.get(clip.id);
-    if (existing) return existing.element;
+      const existing = audioRegistryRef.current.get(clip.id);
+      if (existing) return existing.element;
 
-    const audio = document.createElement("audio");
-    audio.src = clip.src;
-    audio.preload = "auto";
-    audio.crossOrigin = "anonymous";
+      const audio = document.createElement("audio");
+      audio.src = clip.src;
+      audio.preload = "auto";
+      audio.crossOrigin = "anonymous";
 
-    audioRegistryRef.current.set(clip.id, {
-      element: audio,
-      dispose: () => {
-        audio.pause();
-        audio.src = "";
-      },
-    });
+      audioRegistryRef.current.set(clip.id, {
+        element: audio,
+        dispose: () => {
+          audio.pause();
+          audio.src = "";
+        },
+      });
 
-    return audio;
-  };
+      return audio;
+    },
+    [],
+  );
 
   useEffect(() => {
     const activeIds = new Set(activeVideoClips.map((clip) => clip.id));
@@ -245,7 +259,13 @@ export const Preview = () => {
     }
 
     drawActiveFrame();
-  }, [activeVideoClips, currentTime, drawActiveFrame, playing]);
+  }, [
+    activeVideoClips,
+    currentTime,
+    drawActiveFrame,
+    getOrCreateVideo,
+    playing,
+  ]);
 
   useEffect(() => {
     const activeIds = new Set(activeAudioClips.map((clip) => clip.id));
@@ -280,7 +300,7 @@ export const Preview = () => {
         audio.pause();
       }
     }
-  }, [activeAudioClips, currentTime, playing]);
+  }, [activeAudioClips, currentTime, getOrCreateAudio, playing]);
 
   useEffect(() => {
     if (!playing) {
@@ -307,17 +327,22 @@ export const Preview = () => {
   }, [drawActiveFrame, playing]);
 
   useEffect(() => {
+    const videoRegistry = videoRegistryRef.current;
+    const audioRegistry = audioRegistryRef.current;
+    const desiredMediaTimes = desiredMediaTimesRef.current;
+    const desiredAudioTimes = desiredAudioTimesRef.current;
+
     return () => {
-      for (const managed of videoRegistryRef.current.values()) {
+      for (const managed of videoRegistry.values()) {
         managed.dispose();
       }
-      for (const managed of audioRegistryRef.current.values()) {
+      for (const managed of audioRegistry.values()) {
         managed.dispose();
       }
-      videoRegistryRef.current.clear();
-      audioRegistryRef.current.clear();
-      desiredMediaTimesRef.current.clear();
-      desiredAudioTimesRef.current.clear();
+      videoRegistry.clear();
+      audioRegistry.clear();
+      desiredMediaTimes.clear();
+      desiredAudioTimes.clear();
     };
   }, []);
 
@@ -330,32 +355,17 @@ export const Preview = () => {
       >
         <canvas ref={canvasRef} className="h-full w-full" />
 
-        {activeTextClips.length > 0 && (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end gap-2 px-8 pb-8">
-            {activeTextClips.map((clip) => (
-              <div
-                key={clip.id}
-                className="max-w-full rounded bg-black/55 px-3 py-1.5 text-center text-lg font-medium text-white backdrop-blur-sm"
-              >
-                {clip.label}
-              </div>
-            ))}
-          </div>
-        )}
+        <DraggableTextOverlays
+          activeTextClips={activeTextClips}
+          selectedClipId={selectedClipId}
+          containerRef={containerRef}
+          onUpdateTextClipPosition={updateTextClipPosition}
+        />
 
-        {!initError && activeVideoClips.length === 0 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="rounded border border-white/20 bg-black/45 px-4 py-2 text-sm text-white/90">
-              Add video clips to see layered preview
-            </div>
-          </div>
-        )}
-
-        {initError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 px-6 text-center text-sm text-white">
-            WebGL preview is unavailable: {initError}
-          </div>
-        )}
+        <PreviewOverlayMessages
+          initError={initError}
+          hasActiveVideos={activeVideoClips.length > 0}
+        />
       </div>
     </section>
   );

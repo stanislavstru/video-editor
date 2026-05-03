@@ -148,32 +148,51 @@ function drawTextOverlays(
 ) {
   if (textClips.length === 0) return;
 
-  const maxWidth = width * 0.82;
-  const lineHeight = 40;
-  const boxPaddingX = 18;
-  const boxPaddingY = 10;
+  const maxWidth = width * 0.8;
+  const fontSize = 18;
+  const lineHeight = 24;
+  const boxPaddingX = 12;
 
-  ctx.font = "600 30px sans-serif";
+  ctx.font = `${500} ${fontSize}px sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  const baseY = height - 70;
+  const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+  const wrapLines = (text: string, maxLineWidth: number): string[] => {
+    const normalized = text.trim();
+    if (!normalized) return [""];
+
+    const words = normalized.split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = words[0] ?? "";
+
+    for (let i = 1; i < words.length; i += 1) {
+      const candidate = `${currentLine} ${words[i]}`;
+      if (ctx.measureText(candidate).width <= maxLineWidth) {
+        currentLine = candidate;
+      } else {
+        lines.push(currentLine);
+        currentLine = words[i];
+      }
+    }
+
+    lines.push(currentLine);
+    return lines;
+  };
 
   textClips.forEach((clip, index) => {
     const text = clip.label;
-    const textWidth = Math.min(maxWidth, ctx.measureText(text).width);
-    const boxWidth = textWidth + boxPaddingX * 2;
-    const boxHeight = lineHeight + boxPaddingY * 2;
-    const x = width / 2;
-    const y = baseY - index * (boxHeight + 10);
+    const lines = wrapLines(text, Math.max(1, maxWidth - boxPaddingX * 2));
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.58)";
-    ctx.beginPath();
-    ctx.roundRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight, 10);
-    ctx.fill();
+    const fallbackY = 0.84 - index * 0.1;
+    const x = clamp01(clip.textX ?? 0.5) * width;
+    const y = clamp01(clip.textY ?? fallbackY) * height;
 
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(text, x, y + 1);
+    const firstLineY = y - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, lineIndex) => {
+      ctx.fillText(line, x, firstLineY + lineIndex * lineHeight);
+    });
   });
 }
 
