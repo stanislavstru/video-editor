@@ -1,9 +1,35 @@
+import {
+  Output,
+  Mp4OutputFormat,
+  WebMOutputFormat,
+  BufferTarget,
+  CanvasSource,
+  AudioBufferSource,
+  QUALITY_LOW,
+  QUALITY_MEDIUM,
+  QUALITY_HIGH,
+  QUALITY_VERY_HIGH,
+  getFirstEncodableVideoCodec,
+  getFirstEncodableAudioCodec,
+} from "mediabunny";
+import type { Quality } from "mediabunny";
+
 import type { Clip, Row } from "../../store/editorStore";
 import {
   getActiveTextClips,
   getActiveVideoLayers,
   getMediaTime,
 } from "../preview/previewModel";
+
+export type ExportQuality = "low" | "medium" | "high" | "very_high";
+export type ExportFormat = "auto" | "mp4" | "webm";
+
+const QUALITY_MAP: Record<ExportQuality, Quality> = {
+  low: QUALITY_LOW,
+  medium: QUALITY_MEDIUM,
+  high: QUALITY_HIGH,
+  very_high: QUALITY_VERY_HIGH,
+};
 
 interface ExportOptions {
   rows: Row[];
@@ -12,34 +38,17 @@ interface ExportOptions {
   fps: number;
   width: number;
   height: number;
+  quality?: ExportQuality;
+  format?: ExportFormat;
   onProgress?: (value: number) => void;
 }
 
-const AUDIO_START_LEAD_SECONDS = 0.03;
-const EXPORT_TAIL_PADDING_MS = 80;
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export interface ExportResult {
+  blob: Blob;
+  extension: string;
 }
 
-function emitCanvasFrame(track: MediaStreamTrack) {
-  const captureTrack = track as CanvasCaptureMediaStreamTrack & {
-    requestFrame?: () => void;
-  };
-
-  if (typeof captureTrack.requestFrame === "function") {
-    captureTrack.requestFrame();
-  }
-}
-
-function decodeAudioData(
-  audioContext: AudioContext,
-  buffer: ArrayBuffer,
-): Promise<AudioBuffer> {
-  return new Promise((resolve, reject) => {
-    audioContext.decodeAudioData(buffer, resolve, reject);
-  });
-}
+// ─── Canvas helpers ───────────────────────────────────────────────────────────
 
 function waitForSeek(video: HTMLVideoElement): Promise<void> {
   return new Promise((resolve) => {
@@ -77,119 +86,21 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
   });
 }
 
-function pickMimeType(): string {
-  const candidates = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm",
-  ];
+async function seekVideoToTime(
+  video: HTMLVideoElement,
+  time: number,
+): Promise<void> {
+  const clamped = Number.isFinite(video.duration)
+    ? Math.max(0, Math.min(time, Math.max(0, video.duration - 0.001)))
+    : Math.max(0, time);
 
-  for (const mimeType of candidates) {
-    if (MediaRecorder.isTypeSupported(mimeType)) {
-      return mimeType;
-    }
+  if (Math.abs(video.currentTime - clamped) < 0.02) {
+    return;
   }
 
-  throw new Error("This browser does not support WebM recording");
-}
-
-function createRecorder(stream: MediaStream): {
-  recorder: MediaRecorder;
-  chunks: BlobPart[];
-} {
-  const mimeType = pickMimeType();
-  const chunks: BlobPart[] = [];
-  const recorder = new MediaRecorder(stream, {
-    mimeType,
-    videoBitsPerSecond: 8_000_000,
-  });
-
-  recorder.ondataavailable = (event) => {
-    if (event.data && event.data.size > 0) {
-      chunks.push(event.data);
-    }
-  };
-
-  return { recorder, chunks };
-}
-
-async function loadAudioBuffer(
-  src: string,
-  audioContext: AudioContext,
-): Promise<AudioBuffer> {
-  const response = await fetch(src);
-  if (!response.ok) {
-    throw new Error(`Failed to read media data: ${response.status}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  return decodeAudioData(audioContext, arrayBuffer);
-}
-
-async function prepareAudioMix(
-  rows: Row[],
-  clips: Clip[],
-  audioContext: AudioContext,
-  destination: MediaStreamAudioDestinationNode,
-  mixStartAt: number,
-): Promise<AudioBufferSourceNode[]> {
-  const sourceNodes: AudioBufferSourceNode[] = [];
-  const mutedRowIds = new Set(
-    rows.filter((row) => row.muted).map((row) => row.id),
-  );
-  const decodableClips = clips.filter(
-    (clip) =>
-      (clip.type === "video" || clip.type === "audio") &&
-      !!clip.src &&
-      !mutedRowIds.has(clip.rowId),
-  );
-
-  if (decodableClips.length === 0) {
-    return sourceNodes;
-  }
-
-  const bufferCache = new Map<string, AudioBuffer | null>();
-  const masterGain = audioContext.createGain();
-  masterGain.gain.value = 1;
-  masterGain.connect(destination);
-
-  for (const clip of decodableClips) {
-    const src = clip.src!;
-    if (bufferCache.has(src)) {
-      continue;
-    }
-
-    try {
-      const buffer = await loadAudioBuffer(src, audioContext);
-      bufferCache.set(src, buffer);
-    } catch {
-      // Some media may not expose a decodable audio track. Skip it.
-      bufferCache.set(src, null);
-    }
-  }
-
-  for (const clip of decodableClips) {
-    const buffer = bufferCache.get(clip.src!);
-    if (!buffer) continue;
-
-    const offset = Math.max(0, clip.trimStart);
-    const availableDuration = Math.max(0, buffer.duration - offset);
-    const playbackDuration = Math.min(clip.duration, availableDuration);
-    if (playbackDuration <= 0) continue;
-
-    const source = audioContext.createBufferSource();
-    source.buffer = buffer;
-
-    const gain = audioContext.createGain();
-    gain.gain.value = 1;
-
-    source.connect(gain);
-    gain.connect(masterGain);
-    source.start(mixStartAt + clip.start, offset, playbackDuration);
-    sourceNodes.push(source);
-  }
-
-  return sourceNodes;
+  const seekPromise = waitForSeek(video);
+  video.currentTime = clamped;
+  await seekPromise;
 }
 
 function drawBackground(
@@ -266,23 +177,6 @@ function drawTextOverlays(
   });
 }
 
-async function seekVideoToTime(
-  video: HTMLVideoElement,
-  time: number,
-): Promise<void> {
-  const clamped = Number.isFinite(video.duration)
-    ? Math.max(0, Math.min(time, Math.max(0, video.duration - 0.001)))
-    : Math.max(0, time);
-
-  if (Math.abs(video.currentTime - clamped) < 0.02) {
-    return;
-  }
-
-  const seekPromise = waitForSeek(video);
-  video.currentTime = clamped;
-  await seekPromise;
-}
-
 async function renderFrameAtTime(
   rows: Row[],
   clips: Clip[],
@@ -314,38 +208,128 @@ async function renderFrameAtTime(
   drawTextOverlays(ctx, activeTexts, width, height);
 }
 
-export async function exportTimelineToWebM(
+// ─── Audio helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Renders all non-muted audio/video clips into a single AudioBuffer using
+ * OfflineAudioContext. Returns null if there is no audio to render.
+ */
+async function mixAudioOffline(
+  rows: Row[],
+  clips: Clip[],
+  duration: number,
+): Promise<AudioBuffer | null> {
+  const mutedRowIds = new Set(rows.filter((r) => r.muted).map((r) => r.id));
+
+  const audioClips = clips.filter(
+    (c) =>
+      (c.type === "video" || c.type === "audio") &&
+      !!c.src &&
+      !mutedRowIds.has(c.rowId),
+  );
+
+  if (audioClips.length === 0) return null;
+
+  const sampleRate = 48000;
+  const frameCount = Math.ceil(duration * sampleRate);
+  const offlineCtx = new OfflineAudioContext(2, frameCount, sampleRate);
+
+  const bufferCache = new Map<string, AudioBuffer | null>();
+
+  for (const clip of audioClips) {
+    const src = clip.src!;
+    if (bufferCache.has(src)) continue;
+    try {
+      const resp = await fetch(src);
+      if (!resp.ok) {
+        bufferCache.set(src, null);
+        continue;
+      }
+      const arrayBuffer = await resp.arrayBuffer();
+      const buffer = await offlineCtx.decodeAudioData(arrayBuffer);
+      bufferCache.set(src, buffer);
+    } catch {
+      // No decodable audio in this file — skip silently.
+      bufferCache.set(src, null);
+    }
+  }
+
+  let hasAudio = false;
+
+  for (const clip of audioClips) {
+    const buffer = bufferCache.get(clip.src!);
+    if (!buffer) continue;
+
+    const offset = Math.max(0, clip.trimStart);
+    const available = Math.max(0, buffer.duration - offset);
+    const playDuration = Math.min(clip.duration, available);
+    if (playDuration <= 0) continue;
+
+    const source = offlineCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(offlineCtx.destination);
+    source.start(clip.start, offset, playDuration);
+    hasAudio = true;
+  }
+
+  if (!hasAudio) return null;
+
+  return offlineCtx.startRendering();
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
+
+export async function exportTimeline(
   options: ExportOptions,
-): Promise<Blob> {
-  const { rows, clips, duration, fps, width, height, onProgress } = options;
+): Promise<ExportResult> {
+  const {
+    rows,
+    clips,
+    duration,
+    fps,
+    width,
+    height,
+    quality = "high",
+    format = "auto",
+    onProgress,
+  } = options;
+
+  const qualityValue = QUALITY_MAP[quality];
+
+  // Pick the best available codecs via WebCodecs
+  const preferMp4 = format === "mp4" || format === "auto";
+  const videoCodecPriority: ("avc" | "vp9" | "vp8")[] = preferMp4
+    ? ["avc", "vp9", "vp8"]
+    : ["vp9", "vp8", "avc"];
+  const videoCodec = await getFirstEncodableVideoCodec(videoCodecPriority);
+  if (!videoCodec) {
+    throw new Error(
+      "No supported video codec found. Use a modern browser with WebCodecs support.",
+    );
+  }
+
+  const audioCodec = await getFirstEncodableAudioCodec(["aac", "opus"]);
+  if (!audioCodec) {
+    throw new Error(
+      "No supported audio codec found. Use a modern browser with WebCodecs support.",
+    );
+  }
+
+  // Respect forced format; otherwise derive from codec
+  const usesMp4 =
+    format === "mp4" || (format === "auto" && videoCodec === "avc");
+  const extension = usesMp4 ? "mp4" : "webm";
+
+  // ── Setup canvas ──────────────────────────────────────────────────────────
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
 
   const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Could not create 2D canvas context");
-  }
+  if (!ctx) throw new Error("Could not create 2D canvas context");
 
-  const audioContext = new AudioContext();
-  const audioDestination = audioContext.createMediaStreamDestination();
-
-  const canvasStream = canvas.captureStream(fps);
-  const mixedStream = new MediaStream();
-  const [videoTrack] = canvasStream.getVideoTracks();
-  if (!videoTrack) {
-    await audioContext.close();
-    throw new Error("Could not capture video track from canvas");
-  }
-
-  mixedStream.addTrack(videoTrack);
-  for (const audioTrack of audioDestination.stream.getAudioTracks()) {
-    mixedStream.addTrack(audioTrack);
-  }
-
-  const { recorder, chunks } = createRecorder(mixedStream);
-
-  const videoClips = clips.filter((clip) => clip.type === "video" && clip.src);
+  // ── Load video elements ───────────────────────────────────────────────────
+  const videoClips = clips.filter((c) => c.type === "video" && c.src);
   const videoElements = new Map<string, HTMLVideoElement>();
 
   for (const clip of videoClips) {
@@ -359,84 +343,66 @@ export async function exportTimelineToWebM(
     videoElements.set(clip.id, video);
   }
 
-  if (audioContext.state === "suspended") {
-    await audioContext.resume();
-  }
+  // ── Mix audio offline (faster than realtime) ──────────────────────────────
+  const mixedAudio = await mixAudioOffline(rows, clips, duration);
 
-  let audioSources: AudioBufferSourceNode[] = [];
-
-  const frameDuration = 1 / fps;
-  const frameDurationMs = frameDuration * 1000;
-  const totalFrames = Math.max(1, Math.ceil(duration * fps));
-
-  await renderFrameAtTime(rows, clips, 0, videoElements, ctx, width, height);
-  emitCanvasFrame(videoTrack);
-
-  recorder.start();
-  const exportStartWall = performance.now();
-  const audioMixStartAt = audioContext.currentTime + AUDIO_START_LEAD_SECONDS;
-
-  try {
-    audioSources = await prepareAudioMix(
-      rows,
-      clips,
-      audioContext,
-      audioDestination,
-      audioMixStartAt,
-    );
-  } catch {
-    audioSources = [];
-  }
-
-  onProgress?.(1 / totalFrames);
-
-  for (let frameIndex = 1; frameIndex < totalFrames; frameIndex += 1) {
-    const t = frameIndex * frameDuration;
-    await renderFrameAtTime(rows, clips, t, videoElements, ctx, width, height);
-    emitCanvasFrame(videoTrack);
-
-    onProgress?.((frameIndex + 1) / totalFrames);
-
-    const targetWall = exportStartWall + frameIndex * frameDurationMs;
-    const remaining = targetWall - performance.now();
-    if (remaining > 0) {
-      await wait(remaining);
-    }
-  }
-
-  const expectedEndWall =
-    exportStartWall + duration * 1000 + EXPORT_TAIL_PADDING_MS;
-  const tailWait = expectedEndWall - performance.now();
-  if (tailWait > 0) {
-    await wait(tailWait);
-  }
-
-  const result = await new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () => {
-      const mimeType = recorder.mimeType || "video/webm";
-      resolve(new Blob(chunks, { type: mimeType }));
-    };
-    recorder.onerror = () => {
-      reject(new Error("MediaRecorder failed during export"));
-    };
-    recorder.stop();
+  // ── Setup Mediabunny output ───────────────────────────────────────────────
+  const target = new BufferTarget();
+  const output = new Output({
+    format: usesMp4 ? new Mp4OutputFormat() : new WebMOutputFormat(),
+    target,
   });
 
+  const videoSource = new CanvasSource(canvas, {
+    codec: videoCodec,
+    bitrate: qualityValue,
+  });
+  output.addVideoTrack(videoSource, { frameRate: fps });
+
+  let audioSource: AudioBufferSource | null = null;
+  if (mixedAudio) {
+    audioSource = new AudioBufferSource({
+      codec: audioCodec,
+      bitrate: qualityValue,
+    });
+    output.addAudioTrack(audioSource);
+  }
+
+  await output.start();
+
+  // Add the fully-mixed audio buffer (starts at t=0, same as video)
+  if (audioSource && mixedAudio) {
+    await audioSource.add(mixedAudio);
+    audioSource.close();
+  }
+
+  // ── Render frames as fast as possible ────────────────────────────────────
+  const frameDuration = 1 / fps;
+  const totalFrames = Math.max(1, Math.ceil(duration * fps));
+
+  for (let i = 0; i < totalFrames; i++) {
+    const t = i * frameDuration;
+    await renderFrameAtTime(rows, clips, t, videoElements, ctx, width, height);
+    // CanvasSource captures the canvas state at the time of this call
+    await videoSource.add(t, frameDuration);
+    onProgress?.((i + 1) / totalFrames);
+  }
+
+  videoSource.close();
+
+  // ── Cleanup ───────────────────────────────────────────────────────────────
   for (const video of videoElements.values()) {
     video.pause();
     video.src = "";
   }
 
-  for (const source of audioSources) {
-    try {
-      source.stop();
-    } catch {
-      // Ignore nodes that already ended naturally.
-    }
-  }
+  await output.finalize();
 
-  mixedStream.getTracks().forEach((track) => track.stop());
-  await audioContext.close();
+  const buffer = target.buffer;
+  if (!buffer) throw new Error("Export produced no data");
 
-  return result;
+  const mimeType = usesMp4 ? "video/mp4" : "video/webm";
+  const blob = new Blob([buffer], { type: mimeType });
+
+  return { blob, extension };
 }

@@ -1,5 +1,5 @@
 import { type PointerEvent as ReactPointerEvent } from "react";
-import { MdVolumeOff, MdVolumeUp } from "react-icons/md";
+import { Volume2, VolumeX } from "lucide-react";
 import type { Clip, Row } from "../../../store/editorStore";
 import type { DragState } from "../types";
 import { getRowHeight, ROW_LABEL_WIDTH } from "../constants";
@@ -68,7 +68,7 @@ export function TrackRow({
               title={row.muted ? "Unmute track" : "Mute track"}
               aria-label={row.muted ? "Unmute track" : "Mute track"}
             >
-              {row.muted ? <MdVolumeOff size={14} /> : <MdVolumeUp size={14} />}
+              {row.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
           )}
         </div>
