@@ -16,11 +16,14 @@ uniform sampler2D u_texture;
 uniform bool u_hasTexture;
 uniform float u_opacity;
 uniform vec2 u_resolution;
+uniform vec2 u_uvMin;
+uniform vec2 u_uvMax;
 varying vec2 v_uv;
 
 void main() {
   if (u_hasTexture) {
-    vec4 color = texture2D(u_texture, v_uv);
+    vec2 uv = mix(u_uvMin, u_uvMax, v_uv);
+    vec4 color = texture2D(u_texture, uv);
     gl_FragColor = vec4(color.rgb, color.a * u_opacity);
     return;
   }
@@ -97,6 +100,10 @@ export class WebGLPreviewRenderer {
   private readonly hasTextureLocation: WebGLUniformLocation;
   private readonly opacityLocation: WebGLUniformLocation;
   private readonly resolutionLocation: WebGLUniformLocation;
+  private readonly uvMinLocation: WebGLUniformLocation;
+  private readonly uvMaxLocation: WebGLUniformLocation;
+
+  private readonly clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl", {
@@ -116,12 +123,16 @@ export class WebGLPreviewRenderer {
     const opacityLocation = gl.getUniformLocation(program, "u_opacity");
     const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
     const textureLocation = gl.getUniformLocation(program, "u_texture");
+    const uvMinLocation = gl.getUniformLocation(program, "u_uvMin");
+    const uvMaxLocation = gl.getUniformLocation(program, "u_uvMax");
 
     if (
       !hasTextureLocation ||
       !opacityLocation ||
       !resolutionLocation ||
-      !textureLocation
+      !textureLocation ||
+      !uvMinLocation ||
+      !uvMaxLocation
     ) {
       throw new Error("Failed to resolve WebGL uniforms");
     }
@@ -142,10 +153,14 @@ export class WebGLPreviewRenderer {
     this.hasTextureLocation = hasTextureLocation;
     this.opacityLocation = opacityLocation;
     this.resolutionLocation = resolutionLocation;
+    this.uvMinLocation = uvMinLocation;
+    this.uvMaxLocation = uvMaxLocation;
 
     gl.useProgram(program);
     gl.uniform1i(textureLocation, 0);
     gl.uniform1f(this.opacityLocation, 1);
+    gl.uniform2f(this.uvMinLocation, 0, 0);
+    gl.uniform2f(this.uvMaxLocation, 1, 1);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(
@@ -197,23 +212,55 @@ export class WebGLPreviewRenderer {
     const gl = this.gl;
     gl.uniform1i(this.hasTextureLocation, 0);
     gl.uniform1f(this.opacityLocation, 1);
+    gl.uniform2f(this.uvMinLocation, 0, 0);
+    gl.uniform2f(this.uvMaxLocation, 1, 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  private drawLayer(video: HTMLVideoElement, opacity: number) {
+  private drawLayer(
+    video: HTMLVideoElement,
+    opacity: number,
+    centerX: number,
+    centerY: number,
+  ) {
     const gl = this.gl;
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       return;
+    }
+
+    const canvasAspect =
+      this.canvas.width / Math.max(1, this.canvas.height);
+    const videoAspect =
+      (video.videoWidth || this.canvas.width) /
+      Math.max(1, video.videoHeight || this.canvas.height);
+
+    let uvMinX = 0;
+    let uvMaxX = 1;
+    let uvMinY = 0;
+    let uvMaxY = 1;
+
+    if (videoAspect > canvasAspect) {
+      const visible = canvasAspect / videoAspect;
+      const min = (1 - visible) * this.clamp01(centerX);
+      uvMinX = min;
+      uvMaxX = min + visible;
+    } else if (videoAspect < canvasAspect) {
+      const visible = videoAspect / canvasAspect;
+      const min = (1 - visible) * this.clamp01(centerY);
+      uvMinY = min;
+      uvMaxY = min + visible;
     }
 
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
     gl.uniform1i(this.hasTextureLocation, 1);
     gl.uniform1f(this.opacityLocation, opacity);
+    gl.uniform2f(this.uvMinLocation, uvMinX, uvMinY);
+    gl.uniform2f(this.uvMaxLocation, uvMaxX, uvMaxY);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  draw(videos: HTMLVideoElement[]) {
+  draw(videos: Array<{ element: HTMLVideoElement; x: number; y: number }>) {
     const gl = this.gl;
     gl.useProgram(this.program);
     gl.uniform2f(
@@ -225,7 +272,7 @@ export class WebGLPreviewRenderer {
     this.drawBackground();
 
     for (const video of videos) {
-      this.drawLayer(video, 1);
+      this.drawLayer(video.element, 1, video.x, video.y);
     }
   }
 

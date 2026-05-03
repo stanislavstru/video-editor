@@ -11,6 +11,7 @@ import type { Clip } from "../../../store/editorStore";
 interface DraggableTextOverlaysProps {
   activeTextClips: Clip[];
   selectedClipId: string | null;
+  rowOrderById: Map<string, number>;
   containerRef: RefObject<HTMLDivElement | null>;
   onUpdateTextClipPosition: (clipId: string, x: number, y: number) => void;
   onDeleteClip: (clipId: string) => void;
@@ -38,6 +39,7 @@ function getTextPosition(clip: Clip, index: number) {
 export function DraggableTextOverlays({
   activeTextClips,
   selectedClipId,
+  rowOrderById,
   containerRef,
   onUpdateTextClipPosition,
   onDeleteClip,
@@ -109,6 +111,7 @@ export function DraggableTextOverlays({
             style={{
               left: `${position.x * 100}%`,
               top: `${position.y * 100}%`,
+              zIndex: 2000 - (rowOrderById.get(clip.rowId) ?? 0),
             }}
           >
             {/* Toolbar — shown when focused or dragging */}

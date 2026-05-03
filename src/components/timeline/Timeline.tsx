@@ -37,6 +37,15 @@ function getRowTop(rows: Row[], rowId: string) {
   return -1;
 }
 
+function getTopByInsertIndex(rows: Row[], insertIndex: number) {
+  let top = 0;
+  const safeIndex = Math.max(0, Math.min(insertIndex, rows.length));
+  for (let i = 0; i < safeIndex; i++) {
+    top += getRowHeight(rows[i].type);
+  }
+  return top;
+}
+
 // ─── Timeline ─────────────────────────────────────────────────────────────────
 export function Timeline() {
   const rows = useEditorStore((s) => s.rows);
@@ -176,6 +185,8 @@ export function Timeline() {
         offsetInsideClip,
         ghostLeft: timeToPx(clip.start, zoom),
         ghostRowId: clip.rowId,
+        ghostNewRowPosition: null,
+        ghostNewRowInsertIndex: null,
         ghostRowType: clip.type,
       });
 
@@ -273,17 +284,50 @@ export function Timeline() {
 
         let hoveredRowId: string | null = dragState.startRowId;
         let ghostRowType = clip.type;
-        for (const r of rowElements) {
-          if (r.type !== clip.type) continue;
-          if (e.clientY >= r.top && e.clientY < r.bottom) {
-            hoveredRowId = r.rowId;
-            break;
+        let newRowPosition: "top" | "middle" | "bottom" | null = null;
+        let newRowInsertIndex: number | null = null;
+
+        const hoveredRowIndex = rowElements.findIndex(
+          (r) => e.clientY >= r.top && e.clientY < r.bottom,
+        );
+
+        if (hoveredRowIndex !== -1) {
+          const hovered = rowElements[hoveredRowIndex];
+          if (hovered.type === clip.type) {
+            hoveredRowId = hovered.rowId;
+          } else {
+            hoveredRowId = null;
+            const mid = (hovered.top + hovered.bottom) / 2;
+            const insertBefore = e.clientY < mid;
+            newRowInsertIndex = insertBefore
+              ? hoveredRowIndex
+              : hoveredRowIndex + 1;
+
+            if (newRowInsertIndex <= 0) {
+              newRowPosition = "top";
+            } else if (newRowInsertIndex >= rows.length) {
+              newRowPosition = "bottom";
+            } else {
+              newRowPosition = "middle";
+            }
           }
         }
 
+        const firstRowTop = rowElements[0]?.top;
         const lastRowBottom = rowElements[rowElements.length - 1]?.bottom;
-        if (lastRowBottom !== undefined && e.clientY >= lastRowBottom) {
+
+        if (hoveredRowIndex === -1 && firstRowTop !== undefined && e.clientY < firstRowTop) {
           hoveredRowId = null;
+          newRowPosition = "top";
+          newRowInsertIndex = 0;
+        } else if (
+          hoveredRowIndex === -1 &&
+          lastRowBottom !== undefined &&
+          e.clientY >= lastRowBottom
+        ) {
+          hoveredRowId = null;
+          newRowPosition = "bottom";
+          newRowInsertIndex = rows.length;
         }
 
         setDragState((prev) =>
@@ -292,12 +336,16 @@ export function Timeline() {
                 ...prev,
                 ghostLeft: timeToPx(newClipStart, zoom),
                 ghostRowId: hoveredRowId,
+                ghostNewRowPosition: newRowPosition,
+                ghostNewRowInsertIndex: newRowInsertIndex,
                 ghostRowType,
                 _pendingStart: newClipStart,
                 _pendingRowId: hoveredRowId,
+                _pendingNewRowInsertIndex: newRowInsertIndex,
               } as DragState & {
                 _pendingStart: number;
                 _pendingRowId: string | null;
+                _pendingNewRowInsertIndex: number | null;
               })
             : prev,
         );
@@ -360,11 +408,17 @@ export function Timeline() {
         const ds = dragState as DragState & {
           _pendingStart?: number;
           _pendingRowId?: string | null;
+          _pendingNewRowInsertIndex?: number | null;
         };
         const toStart = ds._pendingStart ?? dragState.startClipStart;
+        const shouldCreateNewRow = ds._pendingRowId === null;
+        const insertIndex =
+          shouldCreateNewRow && typeof ds._pendingNewRowInsertIndex === "number"
+            ? ds._pendingNewRowInsertIndex
+            : undefined;
         const createdRow =
-          ds._pendingRowId === null
-            ? createRowOfType(dragState.ghostRowType)
+          shouldCreateNewRow
+            ? createRowOfType(dragState.ghostRowType, insertIndex)
             : null;
         const toRowId =
           createdRow?.id ?? ds._pendingRowId ?? dragState.startRowId;
@@ -422,8 +476,13 @@ export function Timeline() {
     dragState.kind === "moving"
       ? (dragState as Extract<DragState, { kind: "moving" }>).ghostRowId
       : null;
-  const showNewRowDropZone =
-    dragState.kind === "moving" && dragState.ghostRowId === null;
+  const showNewTopRowDropZone =
+    dragState.kind === "moving" && dragState.ghostNewRowPosition === "top";
+  const showNewBottomRowDropZone =
+    dragState.kind === "moving" &&
+    dragState.ghostNewRowPosition === "bottom";
+  const showNewMiddleRowDropZone =
+    dragState.kind === "moving" && dragState.ghostNewRowPosition === "middle";
 
   return (
     <div
@@ -506,6 +565,60 @@ export function Timeline() {
           className="relative"
           style={{ minWidth: totalWidth + ROW_LABEL_WIDTH }}
         >
+          {showNewTopRowDropZone && (
+            <div
+              className="absolute inset-x-0 z-20 flex"
+              style={{ height: NEW_ROW_DROP_ZONE_HEIGHT, top: 0 }}
+            >
+              <div
+                className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted/70"
+                style={{
+                  width: ROW_LABEL_WIDTH,
+                  height: NEW_ROW_DROP_ZONE_HEIGHT,
+                }}
+              >
+                New {dragState.ghostRowType}
+              </div>
+              <div
+                className="relative border-b border-dashed border-border/80 bg-muted/40"
+                style={{
+                  width: totalWidth,
+                  height: NEW_ROW_DROP_ZONE_HEIGHT,
+                  flexShrink: 0,
+                }}
+              />
+            </div>
+          )}
+
+          {showNewMiddleRowDropZone &&
+            dragState.ghostNewRowInsertIndex !== null && (
+              <div
+                className="absolute inset-x-0 z-20 flex"
+                style={{
+                  height: NEW_ROW_DROP_ZONE_HEIGHT,
+                  top: getTopByInsertIndex(rows, dragState.ghostNewRowInsertIndex),
+                }}
+              >
+                <div
+                  className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted/70"
+                  style={{
+                    width: ROW_LABEL_WIDTH,
+                    height: NEW_ROW_DROP_ZONE_HEIGHT,
+                  }}
+                >
+                  New {dragState.ghostRowType}
+                </div>
+                <div
+                  className="relative border-b border-dashed border-border/80 bg-muted/40"
+                  style={{
+                    width: totalWidth,
+                    height: NEW_ROW_DROP_ZONE_HEIGHT,
+                    flexShrink: 0,
+                  }}
+                />
+              </div>
+            )}
+
           {/* Playhead line */}
           <div
             className="absolute top-0 z-30 pointer-events-none"
@@ -537,7 +650,7 @@ export function Timeline() {
             />
           ))}
 
-          {showNewRowDropZone && (
+          {showNewBottomRowDropZone && (
             <div className="flex" style={{ height: NEW_ROW_DROP_ZONE_HEIGHT }}>
               <div
                 className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted/60"
@@ -571,7 +684,12 @@ export function Timeline() {
                 : null;
               const ghostTop = ds.ghostRowId
                 ? getRowTop(rows, ds.ghostRowId)
-                : rowsHeight;
+                : ds.ghostNewRowPosition === "top"
+                  ? 0
+                  : ds.ghostNewRowPosition === "middle" &&
+                      ds.ghostNewRowInsertIndex !== null
+                    ? getTopByInsertIndex(rows, ds.ghostNewRowInsertIndex)
+                  : rowsHeight;
               const ghostHeight = ghostRow
                 ? getClipHeight(ghostRow.type)
                 : getClipHeight(ds.ghostRowType);

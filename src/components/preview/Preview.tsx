@@ -5,9 +5,10 @@ import { TextEditPanel } from "./components/TextEditPanel";
 import { PreviewOverlayMessages } from "./components/PreviewOverlayMessages";
 import {
   getActiveAudioClips,
-  getActiveTextClips,
-  getActiveVideoLayers,
+  getActiveVisualLayers,
   getMediaTime,
+  getTopVisibleVideoLayer,
+  getVisibleTextLayers,
 } from "./previewModel";
 import { WebGLPreviewRenderer } from "./webglRenderer";
 
@@ -30,8 +31,12 @@ export const Preview = () => {
   const currentTime = useEditorStore((s) => s.currentTime);
   const playing = useEditorStore((s) => s.playing);
   const selectedClipId = useEditorStore((s) => s.selectedClipId);
+  const selectClip = useEditorStore((s) => s.selectClip);
   const updateTextClipPosition = useEditorStore(
     (s) => s.updateTextClipPosition,
+  );
+  const updateVideoClipPosition = useEditorStore(
+    (s) => s.updateVideoClipPosition,
   );
   const deleteClip = useEditorStore((s) => s.deleteClip);
   const updateClipLabel = useEditorStore((s) => s.updateClipLabel);
@@ -48,16 +53,39 @@ export const Preview = () => {
   const desiredAudioTimesRef = useRef<Map<string, number>>(new Map());
   const activeVideoClipsRef = useRef<Clip[]>([]);
   const rafRef = useRef<number | null>(null);
+  const videoDragRef = useRef<
+    | {
+        clipId: string;
+        offsetX: number;
+        offsetY: number;
+      }
+    | null
+  >(null);
+  const [draggingVideoClipId, setDraggingVideoClipId] = useState<string | null>(
+    null,
+  );
 
   const [initError, setInitError] = useState<string | null>(null);
 
-  const activeVideoClips = useMemo(
-    () => getActiveVideoLayers(rows, clips, currentTime),
+  const rowOrderById = useMemo(
+    () => new Map(rows.map((row, index) => [row.id, index])),
+    [rows],
+  );
+  const activeVisualLayers = useMemo(
+    () => getActiveVisualLayers(rows, clips, currentTime),
     [rows, clips, currentTime],
   );
+  const activeVideoClips = useMemo(
+    () => activeVisualLayers.filter((clip) => clip.type === "video"),
+    [activeVisualLayers],
+  );
   const activeTextClips = useMemo(
-    () => getActiveTextClips(clips, currentTime),
-    [clips, currentTime],
+    () => getVisibleTextLayers(rows, clips, currentTime),
+    [rows, clips, currentTime],
+  );
+  const topVisibleVideoClip = useMemo(
+    () => getTopVisibleVideoLayer(rows, clips, currentTime),
+    [rows, clips, currentTime],
   );
   const activeAudioClips = useMemo(
     () => getActiveAudioClips(rows, clips, currentTime),
@@ -68,10 +96,17 @@ export const Preview = () => {
     const renderer = rendererRef.current;
     if (!renderer) return;
 
-    const videos: HTMLVideoElement[] = [];
+    const videos: Array<{ element: HTMLVideoElement; x: number; y: number }> =
+      [];
     for (const clip of activeVideoClipsRef.current) {
       const managed = videoRegistryRef.current.get(clip.id);
-      if (managed) videos.push(managed.element);
+      if (managed) {
+        videos.push({
+          element: managed.element,
+          x: Math.max(0, Math.min(1, clip.videoX ?? 0.5)),
+          y: Math.max(0, Math.min(1, clip.videoY ?? 0.5)),
+        });
+      }
     }
 
     renderer.draw(videos);
@@ -332,6 +367,27 @@ export const Preview = () => {
     };
   }, [drawActiveFrame, playing]);
 
+  const updateDraggedVideoPosition = useCallback(
+    (clientX: number, clientY: number) => {
+      const drag = videoDragRef.current;
+      const container = containerRef.current;
+      if (!drag || !container) return;
+
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const pointerX = (clientX - rect.left) / rect.width;
+      const pointerY = (clientY - rect.top) / rect.height;
+
+      updateVideoClipPosition(
+        drag.clipId,
+        Math.max(0, Math.min(1, pointerX - drag.offsetX)),
+        Math.max(0, Math.min(1, pointerY - drag.offsetY)),
+      );
+    },
+    [updateVideoClipPosition],
+  );
+
   useEffect(() => {
     const videoRegistry = videoRegistryRef.current;
     const audioRegistry = audioRegistryRef.current;
@@ -361,9 +417,63 @@ export const Preview = () => {
       >
         <canvas ref={canvasRef} className="h-full w-full" />
 
+        {topVisibleVideoClip && selectedClipId === topVisibleVideoClip.id && (
+          <div
+            className={`absolute inset-0 ${draggingVideoClipId === topVisibleVideoClip.id ? "cursor-grabbing" : "cursor-grab"}`}
+            style={{ zIndex: 1000 }}
+            onPointerDown={(e) => {
+              const container = containerRef.current;
+              if (!container) return;
+
+              const rect = container.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) return;
+
+              const clip = topVisibleVideoClip;
+              const pointerX = (e.clientX - rect.left) / rect.width;
+              const pointerY = (e.clientY - rect.top) / rect.height;
+              const currentX = Math.max(0, Math.min(1, clip.videoX ?? 0.5));
+              const currentY = Math.max(0, Math.min(1, clip.videoY ?? 0.5));
+
+              videoDragRef.current = {
+                clipId: clip.id,
+                offsetX: pointerX - currentX,
+                offsetY: pointerY - currentY,
+              };
+              setDraggingVideoClipId(clip.id);
+              selectClip(clip.id);
+              e.currentTarget.setPointerCapture(e.pointerId);
+              e.preventDefault();
+            }}
+            onPointerMove={(e) => {
+              if (videoDragRef.current?.clipId !== topVisibleVideoClip.id) {
+                return;
+              }
+              updateDraggedVideoPosition(e.clientX, e.clientY);
+            }}
+            onPointerUp={(e) => {
+              if (videoDragRef.current?.clipId === topVisibleVideoClip.id) {
+                updateDraggedVideoPosition(e.clientX, e.clientY);
+              }
+              videoDragRef.current = null;
+              setDraggingVideoClipId(null);
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              }
+            }}
+            onPointerCancel={(e) => {
+              videoDragRef.current = null;
+              setDraggingVideoClipId(null);
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              }
+            }}
+          />
+        )}
+
         <DraggableTextOverlays
           activeTextClips={activeTextClips}
           selectedClipId={selectedClipId}
+          rowOrderById={rowOrderById}
           containerRef={containerRef}
           onUpdateTextClipPosition={updateTextClipPosition}
           onDeleteClip={deleteClip}

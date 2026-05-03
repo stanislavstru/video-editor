@@ -14,6 +14,8 @@ export type DragState =
       /** Current ghost position */
       ghostLeft: number;
       ghostRowId: string | null;
+      ghostNewRowPosition: "top" | "middle" | "bottom" | null;
+      ghostNewRowInsertIndex: number | null;
       ghostRowType: ClipType;
     }
   | {

@@ -29,6 +29,9 @@ export interface Clip {
   textColor?: string;
   /** Text overlay font size in px */
   textSize?: number;
+  /** Normalized video center position on preview/export canvas, 0..1 */
+  videoX?: number;
+  videoY?: number;
 }
 
 export interface Row {
@@ -108,7 +111,7 @@ interface EditorState {
 
   addClip: (clip: Clip) => void;
   addRow: (row: Row) => void;
-  createRowOfType: (type: ClipType) => Row;
+  createRowOfType: (type: ClipType, insertIndex?: number) => Row;
   toggleRowMuted: (rowId: string) => void;
   deleteRow: (rowId: string) => void;
 
@@ -117,6 +120,7 @@ interface EditorState {
   addClipFromMedia: (mediaId: string) => void;
   addTextClip: (label: string, startAt?: number, duration?: number) => void;
   updateTextClipPosition: (clipId: string, x: number, y: number) => void;
+  updateVideoClipPosition: (clipId: string, x: number, y: number) => void;
   deleteClip: (clipId: string) => void;
   updateClipLabel: (clipId: string, label: string) => void;
   updateTextClipStyle: (clipId: string, color: string, size: number) => void;
@@ -146,7 +150,7 @@ function createRowLabel(type: ClipType, index: number): string {
   return `${type.charAt(0).toUpperCase()}${type.slice(1)} ${index}`;
 }
 
-function createRow(rows: Row[], type: ClipType): Row {
+function createRow(rows: Row[], type: ClipType, insertIndex?: number): Row {
   const nextIndex = rows.filter((row) => row.type === type).length + 1;
   const row: Row = {
     id: `row-${type}-${nextIndex}`,
@@ -154,7 +158,15 @@ function createRow(rows: Row[], type: ClipType): Row {
     type,
     muted: false,
   };
-  rows.push(row);
+  if (
+    typeof insertIndex === "number" &&
+    insertIndex >= 0 &&
+    insertIndex <= rows.length
+  ) {
+    rows.splice(insertIndex, 0, row);
+  } else {
+    rows.push(row);
+  }
   return row;
 }
 
@@ -325,10 +337,10 @@ export const useEditorStore = create<EditorState>()(
       });
     },
 
-    createRowOfType: (type) => {
+    createRowOfType: (type, insertIndex) => {
       let createdRow!: Row;
       set((draft) => {
-        createdRow = createRow(draft.rows, type);
+        createdRow = createRow(draft.rows, type, insertIndex);
       });
       return createdRow;
     },
@@ -397,6 +409,8 @@ export const useEditorStore = create<EditorState>()(
           src: media.src,
           trimStart: 0,
           sourceDuration: media.duration,
+          videoX: media.type === "video" ? 0.5 : undefined,
+          videoY: media.type === "video" ? 0.5 : undefined,
         };
         const cmd: Command = { type: "ADD_CLIP", clip };
 
@@ -448,6 +462,18 @@ export const useEditorStore = create<EditorState>()(
         if (!clip || clip.type !== "text") return;
         clip.textX = clampedX;
         clip.textY = clampedY;
+      });
+    },
+
+    updateVideoClipPosition: (clipId, x, y) => {
+      const clampedX = Math.max(0, Math.min(1, x));
+      const clampedY = Math.max(0, Math.min(1, y));
+
+      set((draft) => {
+        const clip = draft.clips.find((c) => c.id === clipId);
+        if (!clip || clip.type !== "video") return;
+        clip.videoX = clampedX;
+        clip.videoY = clampedY;
       });
     },
 

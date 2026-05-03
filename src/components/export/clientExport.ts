@@ -16,8 +16,7 @@ import type { Quality } from "mediabunny";
 
 import type { Clip, Row } from "../../store/editorStore";
 import {
-  getActiveTextClips,
-  getActiveVideoLayers,
+  getActiveVisualLayers,
   getMediaTime,
 } from "../preview/previewModel";
 
@@ -115,8 +114,9 @@ function drawBackground(
   ctx.fillRect(0, 0, width, height);
 }
 
-function drawVideoContain(
+function drawVideoCoverWithPan(
   ctx: CanvasRenderingContext2D,
+  clip: Clip,
   video: HTMLVideoElement,
   width: number,
   height: number,
@@ -126,45 +126,23 @@ function drawVideoContain(
   const sourceRatio = videoWidth / Math.max(1, videoHeight);
   const targetRatio = width / Math.max(1, height);
 
-  let drawWidth = width;
-  let drawHeight = height;
+  const centerX = Math.max(0, Math.min(1, clip.videoX ?? 0.5));
+  const centerY = Math.max(0, Math.min(1, clip.videoY ?? 0.5));
+
+  let sx = 0;
+  let sy = 0;
+  let sWidth = videoWidth;
+  let sHeight = videoHeight;
 
   if (sourceRatio > targetRatio) {
-    drawHeight = width / sourceRatio;
+    sWidth = videoHeight * targetRatio;
+    sx = (videoWidth - sWidth) * centerX;
   } else {
-    drawWidth = height * sourceRatio;
+    sHeight = videoWidth / targetRatio;
+    sy = (videoHeight - sHeight) * centerY;
   }
 
-  const x = (width - drawWidth) / 2;
-  const y = (height - drawHeight) / 2;
-  ctx.drawImage(video, x, y, drawWidth, drawHeight);
-}
-
-function drawTextOverlays(
-  ctx: CanvasRenderingContext2D,
-  textClips: Clip[],
-  width: number,
-  height: number,
-) {
-  if (textClips.length === 0) return;
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-
-  textClips.forEach((clip, index) => {
-    const text = clip.label;
-    const fontSize = clip.textSize ?? 18;
-    const textColor = clip.textColor ?? "#ffffff";
-    const fallbackY = 0.84 - index * 0.1;
-    const x = clamp01(clip.textX ?? 0.5) * width;
-    const y = clamp01(clip.textY ?? fallbackY) * height;
-
-    ctx.font = `500 ${fontSize}px sans-serif`;
-    ctx.fillStyle = textColor;
-    ctx.fillText(text, x, y);
-  });
+  ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, width, height);
 }
 
 async function renderFrameAtTime(
@@ -176,8 +154,8 @@ async function renderFrameAtTime(
   width: number,
   height: number,
 ) {
-  const activeVideos = getActiveVideoLayers(rows, clips, currentTime);
-  const activeTexts = getActiveTextClips(clips, currentTime);
+  const activeLayers = getActiveVisualLayers(rows, clips, currentTime);
+  const activeVideos = activeLayers.filter((clip) => clip.type === "video");
 
   const seekTasks: Promise<void>[] = [];
   for (const clip of activeVideos) {
@@ -190,12 +168,27 @@ async function renderFrameAtTime(
   await Promise.all(seekTasks);
 
   drawBackground(ctx, width, height);
-  for (const clip of activeVideos) {
-    const video = videoElements.get(clip.id);
-    if (!video) continue;
-    drawVideoContain(ctx, video, width, height);
+
+  let textFallbackIndex = 0;
+  for (const clip of activeLayers) {
+    if (clip.type === "video") {
+      const video = videoElements.get(clip.id);
+      if (!video) continue;
+      drawVideoCoverWithPan(ctx, clip, video, width, height);
+      continue;
+    }
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const fallbackY = 0.84 - textFallbackIndex * 0.1;
+    const x = Math.max(0, Math.min(1, clip.textX ?? 0.5)) * width;
+    const y = Math.max(0, Math.min(1, clip.textY ?? fallbackY)) * height;
+
+    ctx.font = `500 ${clip.textSize ?? 18}px sans-serif`;
+    ctx.fillStyle = clip.textColor ?? "#ffffff";
+    ctx.fillText(clip.label, x, y);
+    textFallbackIndex += 1;
   }
-  drawTextOverlays(ctx, activeTexts, width, height);
 }
 
 // ─── Audio helpers ────────────────────────────────────────────────────────────
