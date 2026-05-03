@@ -377,7 +377,8 @@ export const useEditorStore = create<EditorState>()(
       const normalizedLabel = label.trim() || "Text";
       const currentTime = get().currentTime;
       set((draft) => {
-        const targetRow = ensureRowForType(draft.rows, "text");
+        // Each text insert gets its own row so quick-add templates don't overlap.
+        const targetRow = createRow(draft.rows, "text");
         const defaultDuration = 4;
         const clipDuration = Math.max(0.2, duration ?? defaultDuration);
         const startTime = Math.max(0, startAt ?? currentTime);
