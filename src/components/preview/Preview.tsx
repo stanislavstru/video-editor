@@ -48,8 +48,8 @@ export const Preview = () => {
     [clips, currentTime],
   );
   const activeAudioClips = useMemo(
-    () => getActiveAudioClips(clips, currentTime),
-    [clips, currentTime],
+    () => getActiveAudioClips(rows, clips, currentTime),
+    [rows, clips, currentTime],
   );
 
   const drawActiveFrame = useCallback(() => {

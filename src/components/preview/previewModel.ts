@@ -47,13 +47,19 @@ export function getActiveTextClips(clips: Clip[], currentTime: number): Clip[] {
 }
 
 export function getActiveAudioClips(
+  rows: Row[],
   clips: Clip[],
   currentTime: number,
 ): Clip[] {
+  const mutedRowIds = new Set(
+    rows.filter((row) => row.muted).map((row) => row.id),
+  );
+
   return clips.filter(
     (clip) =>
       (clip.type === "audio" || clip.type === "video") &&
       !!clip.src &&
+      !mutedRowIds.has(clip.rowId) &&
       isClipActive(clip, currentTime),
   );
 }

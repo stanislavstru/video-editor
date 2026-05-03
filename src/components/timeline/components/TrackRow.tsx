@@ -1,4 +1,5 @@
 import { type PointerEvent as ReactPointerEvent } from "react";
+import { MdVolumeOff, MdVolumeUp } from "react-icons/md";
 import type { Clip, Row } from "../../../store/editorStore";
 import type { DragState } from "../types";
 import { getRowHeight, ROW_LABEL_WIDTH } from "../constants";
@@ -26,6 +27,7 @@ export interface TrackRowProps {
     e: ReactPointerEvent<HTMLDivElement>,
     rowId: string,
   ) => void;
+  onToggleRowMuted: (rowId: string) => void;
 }
 
 export function TrackRow({
@@ -40,9 +42,11 @@ export function TrackRow({
   onPointerDownTrimLeft,
   onPointerDownTrimRight,
   onRowPointerDown,
+  onToggleRowMuted,
 }: TrackRowProps) {
   const isGhostRow = ghostRowId === row.id;
   const rowHeight = getRowHeight(row.type);
+  const canMute = row.type === "audio" || row.type === "video";
 
   return (
     <div className="flex" style={{ height: rowHeight }}>
@@ -51,7 +55,23 @@ export function TrackRow({
         className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted"
         style={{ width: ROW_LABEL_WIDTH, height: rowHeight }}
       >
-        {row.label}
+        <div className="flex w-full items-center justify-between gap-2">
+          <span className="truncate">{row.label}</span>
+          {canMute && (
+            <button
+              type="button"
+              className="shrink-0 cursor-pointer rounded border border-border p-1 text-muted-foreground hover:bg-background"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleRowMuted(row.id);
+              }}
+              title={row.muted ? "Unmute track" : "Mute track"}
+              aria-label={row.muted ? "Unmute track" : "Mute track"}
+            >
+              {row.muted ? <MdVolumeOff size={14} /> : <MdVolumeUp size={14} />}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Track area */}

@@ -28,6 +28,7 @@ export interface Row {
   id: string;
   label: string;
   type: ClipType;
+  muted: boolean;
 }
 
 export interface MediaItem {
@@ -101,6 +102,7 @@ interface EditorState {
   addClip: (clip: Clip) => void;
   addRow: (row: Row) => void;
   createRowOfType: (type: ClipType) => Row;
+  toggleRowMuted: (rowId: string) => void;
 
   addMediaItem: (item: MediaItem) => void;
   removeMediaItem: (id: string) => void;
@@ -138,6 +140,7 @@ function createRow(rows: Row[], type: ClipType): Row {
     id: `row-${type}-${nextIndex}`,
     label: createRowLabel(type, nextIndex),
     type,
+    muted: false,
   };
   rows.push(row);
   return row;
@@ -306,7 +309,7 @@ export const useEditorStore = create<EditorState>()(
 
     addRow: (row) => {
       set((draft) => {
-        draft.rows.push(row);
+        draft.rows.push({ ...row, muted: row.muted ?? false });
       });
     },
 
@@ -316,6 +319,14 @@ export const useEditorStore = create<EditorState>()(
         createdRow = createRow(draft.rows, type);
       });
       return createdRow;
+    },
+
+    toggleRowMuted: (rowId) => {
+      set((draft) => {
+        const row = draft.rows.find((item) => item.id === rowId);
+        if (!row || row.type === "text") return;
+        row.muted = !row.muted;
+      });
     },
 
     addMediaItem: (item) => {

@@ -127,14 +127,21 @@ async function loadAudioBuffer(
 }
 
 async function prepareAudioMix(
+  rows: Row[],
   clips: Clip[],
   audioContext: AudioContext,
   destination: MediaStreamAudioDestinationNode,
   mixStartAt: number,
 ): Promise<AudioBufferSourceNode[]> {
   const sourceNodes: AudioBufferSourceNode[] = [];
+  const mutedRowIds = new Set(
+    rows.filter((row) => row.muted).map((row) => row.id),
+  );
   const decodableClips = clips.filter(
-    (clip) => (clip.type === "video" || clip.type === "audio") && !!clip.src,
+    (clip) =>
+      (clip.type === "video" || clip.type === "audio") &&
+      !!clip.src &&
+      !mutedRowIds.has(clip.rowId),
   );
 
   if (decodableClips.length === 0) {
@@ -371,6 +378,7 @@ export async function exportTimelineToWebM(
 
   try {
     audioSources = await prepareAudioMix(
+      rows,
       clips,
       audioContext,
       audioDestination,
