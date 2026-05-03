@@ -1,14 +1,16 @@
 import { SlFilm } from "react-icons/sl";
-import { MdTextFields } from "react-icons/md";
+import { MdTextFields, MdFileDownload } from "react-icons/md";
 import { useState } from "react";
 import { MediaStore } from "../media-store/MediaStore";
 import { Text } from "../features/text/Text";
+import { ExportPanel } from "../export/ExportPanel";
 
-type Tab = "media" | "text";
+type Tab = "media" | "text" | "export";
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "media", label: "MEDIA", icon: <SlFilm size="16" /> },
   { id: "text", label: "TEXT", icon: <MdTextFields size="16" /> },
+  { id: "export", label: "EXPORT", icon: <MdFileDownload size="16" /> },
 ];
 
 export const Sidebar = () => {
@@ -35,6 +37,7 @@ export const Sidebar = () => {
       <div className="w-full p-2">
         {activeTab === "media" && <MediaStore />}
         {activeTab === "text" && <Text />}
+        {activeTab === "export" && <ExportPanel />}
       </div>
     </aside>
   );
