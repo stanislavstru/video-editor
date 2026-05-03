@@ -7,13 +7,112 @@ import {
   getActiveAudioClips,
   getActiveVisualLayers,
   getMediaTime,
-  getTopVisibleVideoLayer,
   getVisibleTextLayers,
 } from "./previewModel";
 import { WebGLPreviewRenderer } from "./webglRenderer";
 
 const SEEK_EPSILON = 0.08;
 const AUDIO_SEEK_EPSILON = 0.12;
+const PREVIEW_ZONE_INSET_RATIO = 0.04;
+
+interface ZoneRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface VideoInteractionRect {
+  clipId: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getPreviewZoneRect(width: number, height: number): ZoneRect {
+  const insetX = width * PREVIEW_ZONE_INSET_RATIO;
+  const insetY = height * PREVIEW_ZONE_INSET_RATIO;
+
+  return {
+    left: insetX,
+    top: insetY,
+    width: Math.max(1, width - insetX * 2),
+    height: Math.max(1, height - insetY * 2),
+  };
+}
+
+function getVideoRenderRect(
+  clip: Clip,
+  zone: ZoneRect,
+  video?: HTMLVideoElement,
+): VideoInteractionRect {
+  const videoWidth = video?.videoWidth || zone.width;
+  const videoHeight = video?.videoHeight || zone.height;
+  const videoAspect = videoWidth / Math.max(1, videoHeight);
+  const zoneAspect = zone.width / Math.max(1, zone.height);
+
+  let renderWidth = zone.width;
+  let renderHeight = zone.height;
+
+  if (videoAspect > zoneAspect) {
+    renderWidth = zone.width;
+    renderHeight = zone.width / Math.max(videoAspect, 0.00001);
+  } else {
+    renderHeight = zone.height;
+    renderWidth = zone.height * videoAspect;
+  }
+
+  const centerX = zone.left + clamp01(clip.videoX ?? 0.5) * zone.width;
+  const centerY = zone.top + clamp01(clip.videoY ?? 0.5) * zone.height;
+
+  return {
+    clipId: clip.id,
+    left: centerX - renderWidth / 2,
+    top: centerY - renderHeight / 2,
+    width: renderWidth,
+    height: renderHeight,
+  };
+}
+
+function intersectRects(
+  rect: VideoInteractionRect,
+  zone: ZoneRect,
+): VideoInteractionRect | null {
+  const left = Math.max(rect.left, zone.left);
+  const top = Math.max(rect.top, zone.top);
+  const right = Math.min(rect.left + rect.width, zone.left + zone.width);
+  const bottom = Math.min(rect.top + rect.height, zone.top + zone.height);
+
+  if (right <= left || bottom <= top) {
+    return null;
+  }
+
+  return {
+    clipId: rect.clipId,
+    left,
+    top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function pointInRect(
+  pointX: number,
+  pointY: number,
+  rect: VideoInteractionRect,
+): boolean {
+  return (
+    pointX >= rect.left &&
+    pointX <= rect.left + rect.width &&
+    pointY >= rect.top &&
+    pointY <= rect.top + rect.height
+  );
+}
 
 interface ManagedVideo {
   element: HTMLVideoElement;
@@ -53,17 +152,19 @@ export const Preview = () => {
   const desiredAudioTimesRef = useRef<Map<string, number>>(new Map());
   const activeVideoClipsRef = useRef<Clip[]>([]);
   const rafRef = useRef<number | null>(null);
-  const videoDragRef = useRef<
-    | {
-        clipId: string;
-        offsetX: number;
-        offsetY: number;
-      }
-    | null
-  >(null);
+  const videoDragRef = useRef<{
+    clipId: string;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
   const [draggingVideoClipId, setDraggingVideoClipId] = useState<string | null>(
     null,
   );
+  const [focusedVideoClipId, setFocusedVideoClipId] = useState<string | null>(
+    null,
+  );
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [videoLayoutVersion, setVideoLayoutVersion] = useState(0);
 
   const [initError, setInitError] = useState<string | null>(null);
 
@@ -83,18 +184,56 @@ export const Preview = () => {
     () => getVisibleTextLayers(rows, clips, currentTime),
     [rows, clips, currentTime],
   );
-  const topVisibleVideoClip = useMemo(
-    () => getTopVisibleVideoLayer(rows, clips, currentTime),
-    [rows, clips, currentTime],
-  );
   const activeAudioClips = useMemo(
     () => getActiveAudioClips(rows, clips, currentTime),
     [rows, clips, currentTime],
   );
+  const previewZone = useMemo(
+    () => getPreviewZoneRect(containerSize.width, containerSize.height),
+    [containerSize],
+  );
+  const activeVideoRects = useMemo(() => {
+    return activeVideoClips.map((clip) => {
+      const video = videoRegistryRef.current.get(clip.id)?.element;
+      return getVideoRenderRect(clip, previewZone, video);
+    });
+  }, [activeVideoClips, previewZone, videoLayoutVersion]);
+  const activeVisibleVideoRects = useMemo(
+    () =>
+      activeVideoRects
+        .map((rect) => intersectRects(rect, previewZone))
+        .filter((rect): rect is VideoInteractionRect => Boolean(rect)),
+    [activeVideoRects, previewZone],
+  );
+  const highlightedVideoRect = useMemo(() => {
+    const highlightedId = draggingVideoClipId ?? focusedVideoClipId;
+    if (!highlightedId) return null;
+    return (
+      activeVisibleVideoRects.find((rect) => rect.clipId === highlightedId) ??
+      null
+    );
+  }, [activeVisibleVideoRects, draggingVideoClipId, focusedVideoClipId]);
 
   const drawActiveFrame = useCallback(() => {
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    const container = containerRef.current;
+    if (!renderer || !container) return;
+
+    const cssWidth = Math.max(1, container.clientWidth);
+    const cssHeight = Math.max(1, container.clientHeight);
+    const cssZone = getPreviewZoneRect(cssWidth, cssHeight);
+    const dprX = canvasRef.current
+      ? canvasRef.current.width / cssWidth
+      : window.devicePixelRatio || 1;
+    const dprY = canvasRef.current
+      ? canvasRef.current.height / cssHeight
+      : window.devicePixelRatio || 1;
+    const zone = {
+      left: cssZone.left * dprX,
+      top: cssZone.top * dprY,
+      width: cssZone.width * dprX,
+      height: cssZone.height * dprY,
+    };
 
     const videos: Array<{ element: HTMLVideoElement; x: number; y: number }> =
       [];
@@ -103,13 +242,13 @@ export const Preview = () => {
       if (managed) {
         videos.push({
           element: managed.element,
-          x: Math.max(0, Math.min(1, clip.videoX ?? 0.5)),
-          y: Math.max(0, Math.min(1, clip.videoY ?? 0.5)),
+          x: clamp01(clip.videoX ?? 0.5),
+          y: clamp01(clip.videoY ?? 0.5),
         });
       }
     }
 
-    renderer.draw(videos);
+    renderer.draw(videos, zone);
   }, []);
 
   useEffect(() => {
@@ -127,10 +266,11 @@ export const Preview = () => {
 
       const resize = () => {
         const dpr = window.devicePixelRatio || 1;
-        renderer.resize(
-          container.clientWidth * dpr,
-          container.clientHeight * dpr,
-        );
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        setContainerSize({ width, height });
+        renderer.resize(width * dpr, height * dpr);
       };
 
       resize();
@@ -219,9 +359,11 @@ export const Preview = () => {
           }
         }
         drawActiveFrame();
+        setVideoLayoutVersion((value) => value + 1);
       };
 
       video.addEventListener("loadedmetadata", syncAndDraw);
+      video.addEventListener("loadeddata", syncAndDraw);
       video.addEventListener("seeked", drawActiveFrame);
       video.addEventListener("canplay", drawActiveFrame);
 
@@ -229,6 +371,7 @@ export const Preview = () => {
         element: video,
         dispose: () => {
           video.removeEventListener("loadedmetadata", syncAndDraw);
+          video.removeEventListener("loadeddata", syncAndDraw);
           video.removeEventListener("seeked", drawActiveFrame);
           video.removeEventListener("canplay", drawActiveFrame);
           video.pause();
@@ -376,17 +519,44 @@ export const Preview = () => {
       const rect = container.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
 
-      const pointerX = (clientX - rect.left) / rect.width;
-      const pointerY = (clientY - rect.top) / rect.height;
+      const zoneRect = getPreviewZoneRect(rect.width, rect.height);
+      if (zoneRect.width <= 0 || zoneRect.height <= 0) return;
+
+      const pointerX = (clientX - rect.left - zoneRect.left) / zoneRect.width;
+      const pointerY = (clientY - rect.top - zoneRect.top) / zoneRect.height;
 
       updateVideoClipPosition(
         drag.clipId,
-        Math.max(0, Math.min(1, pointerX - drag.offsetX)),
-        Math.max(0, Math.min(1, pointerY - drag.offsetY)),
+        clamp01(pointerX - drag.offsetX),
+        clamp01(pointerY - drag.offsetY),
       );
     },
     [updateVideoClipPosition],
   );
+
+  useEffect(() => {
+    if (!selectedClipId) {
+      setFocusedVideoClipId(null);
+      return;
+    }
+
+    const isActiveVideo = activeVideoClips.some(
+      (clip) => clip.id === selectedClipId,
+    );
+    if (isActiveVideo) {
+      setFocusedVideoClipId(selectedClipId);
+    }
+  }, [activeVideoClips, selectedClipId]);
+
+  useEffect(() => {
+    if (!focusedVideoClipId) return;
+    const stillVisible = activeVideoClips.some(
+      (clip) => clip.id === focusedVideoClipId,
+    );
+    if (!stillVisible) {
+      setFocusedVideoClipId(null);
+    }
+  }, [activeVideoClips, focusedVideoClipId]);
 
   useEffect(() => {
     const videoRegistry = videoRegistryRef.current;
@@ -417,9 +587,33 @@ export const Preview = () => {
       >
         <canvas ref={canvasRef} className="h-full w-full" />
 
-        {topVisibleVideoClip && selectedClipId === topVisibleVideoClip.id && (
+        <div
+          className="pointer-events-none absolute border border-dashed border-white/25"
+          style={{
+            left: `${previewZone.left}px`,
+            top: `${previewZone.top}px`,
+            width: `${previewZone.width}px`,
+            height: `${previewZone.height}px`,
+            zIndex: 900,
+          }}
+        />
+
+        {highlightedVideoRect && (
           <div
-            className={`absolute inset-0 ${draggingVideoClipId === topVisibleVideoClip.id ? "cursor-grabbing" : "cursor-grab"}`}
+            className="pointer-events-none absolute border-2 border-[#00ff00]"
+            style={{
+              left: `${highlightedVideoRect.left}px`,
+              top: `${highlightedVideoRect.top}px`,
+              width: `${highlightedVideoRect.width}px`,
+              height: `${highlightedVideoRect.height}px`,
+              zIndex: 1300,
+            }}
+          />
+        )}
+
+        {activeVisibleVideoRects.length > 0 && (
+          <div
+            className={`absolute inset-0 ${draggingVideoClipId ? "cursor-grabbing" : "cursor-grab"}`}
             style={{ zIndex: 1000 }}
             onPointerDown={(e) => {
               const container = containerRef.current;
@@ -428,11 +622,28 @@ export const Preview = () => {
               const rect = container.getBoundingClientRect();
               if (rect.width <= 0 || rect.height <= 0) return;
 
-              const clip = topVisibleVideoClip;
-              const pointerX = (e.clientX - rect.left) / rect.width;
-              const pointerY = (e.clientY - rect.top) / rect.height;
-              const currentX = Math.max(0, Math.min(1, clip.videoX ?? 0.5));
-              const currentY = Math.max(0, Math.min(1, clip.videoY ?? 0.5));
+              const localX = e.clientX - rect.left;
+              const localY = e.clientY - rect.top;
+              const hitRect = [...activeVisibleVideoRects]
+                .reverse()
+                .find((candidate) => pointInRect(localX, localY, candidate));
+              if (!hitRect) {
+                setFocusedVideoClipId(null);
+                return;
+              }
+
+              const clip = activeVideoClips.find(
+                (item) => item.id === hitRect.clipId,
+              );
+              if (!clip) return;
+
+              const zoneRect = getPreviewZoneRect(rect.width, rect.height);
+              if (zoneRect.width <= 0 || zoneRect.height <= 0) return;
+
+              const pointerX = (localX - zoneRect.left) / zoneRect.width;
+              const pointerY = (localY - zoneRect.top) / zoneRect.height;
+              const currentX = clamp01(clip.videoX ?? 0.5);
+              const currentY = clamp01(clip.videoY ?? 0.5);
 
               videoDragRef.current = {
                 clipId: clip.id,
@@ -440,18 +651,19 @@ export const Preview = () => {
                 offsetY: pointerY - currentY,
               };
               setDraggingVideoClipId(clip.id);
+              setFocusedVideoClipId(clip.id);
               selectClip(clip.id);
               e.currentTarget.setPointerCapture(e.pointerId);
               e.preventDefault();
             }}
             onPointerMove={(e) => {
-              if (videoDragRef.current?.clipId !== topVisibleVideoClip.id) {
+              if (!videoDragRef.current) {
                 return;
               }
               updateDraggedVideoPosition(e.clientX, e.clientY);
             }}
             onPointerUp={(e) => {
-              if (videoDragRef.current?.clipId === topVisibleVideoClip.id) {
+              if (videoDragRef.current) {
                 updateDraggedVideoPosition(e.clientX, e.clientY);
               }
               videoDragRef.current = null;

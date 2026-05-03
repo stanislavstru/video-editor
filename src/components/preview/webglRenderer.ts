@@ -35,6 +35,13 @@ void main() {
 }
 `;
 
+interface ZoneRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 function compileShader(
   gl: WebGLRenderingContext,
   type: number,
@@ -104,6 +111,28 @@ export class WebGLPreviewRenderer {
   private readonly uvMaxLocation: WebGLUniformLocation;
 
   private readonly clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+  private setPositionQuad(
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+  ) {
+    const canvasWidth = Math.max(1, this.canvas.width);
+    const canvasHeight = Math.max(1, this.canvas.height);
+
+    const x1 = (left / canvasWidth) * 2 - 1;
+    const x2 = ((left + width) / canvasWidth) * 2 - 1;
+    const yTop = 1 - (top / canvasHeight) * 2;
+    const yBottom = 1 - ((top + height) / canvasHeight) * 2;
+
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
+    this.gl.bufferData(
+      this.gl.ARRAY_BUFFER,
+      new Float32Array([x1, yBottom, x2, yBottom, x1, yTop, x2, yTop]),
+      this.gl.DYNAMIC_DRAW,
+    );
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl", {
@@ -210,6 +239,7 @@ export class WebGLPreviewRenderer {
 
   private drawBackground() {
     const gl = this.gl;
+    this.setPositionQuad(0, 0, this.canvas.width, this.canvas.height);
     gl.uniform1i(this.hasTextureLocation, 0);
     gl.uniform1f(this.opacityLocation, 1);
     gl.uniform2f(this.uvMinLocation, 0, 0);
@@ -222,45 +252,48 @@ export class WebGLPreviewRenderer {
     opacity: number,
     centerX: number,
     centerY: number,
+    zone: ZoneRect,
   ) {
     const gl = this.gl;
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       return;
     }
 
-    const canvasAspect =
-      this.canvas.width / Math.max(1, this.canvas.height);
     const videoAspect =
       (video.videoWidth || this.canvas.width) /
       Math.max(1, video.videoHeight || this.canvas.height);
 
-    let uvMinX = 0;
-    let uvMaxX = 1;
-    let uvMinY = 0;
-    let uvMaxY = 1;
+    const zoneAspect = zone.width / Math.max(1, zone.height);
+    const renderWidth =
+      videoAspect > zoneAspect ? zone.width : zone.height * videoAspect;
+    const renderHeight =
+      videoAspect > zoneAspect
+        ? zone.width / Math.max(videoAspect, 0.00001)
+        : zone.height;
 
-    if (videoAspect > canvasAspect) {
-      const visible = canvasAspect / videoAspect;
-      const min = (1 - visible) * this.clamp01(centerX);
-      uvMinX = min;
-      uvMaxX = min + visible;
-    } else if (videoAspect < canvasAspect) {
-      const visible = videoAspect / canvasAspect;
-      const min = (1 - visible) * this.clamp01(centerY);
-      uvMinY = min;
-      uvMaxY = min + visible;
-    }
+    const targetCenterX = zone.left + this.clamp01(centerX) * zone.width;
+    const targetCenterY = zone.top + this.clamp01(centerY) * zone.height;
+
+    this.setPositionQuad(
+      targetCenterX - renderWidth / 2,
+      targetCenterY - renderHeight / 2,
+      renderWidth,
+      renderHeight,
+    );
 
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
     gl.uniform1i(this.hasTextureLocation, 1);
     gl.uniform1f(this.opacityLocation, opacity);
-    gl.uniform2f(this.uvMinLocation, uvMinX, uvMinY);
-    gl.uniform2f(this.uvMaxLocation, uvMaxX, uvMaxY);
+    gl.uniform2f(this.uvMinLocation, 0, 0);
+    gl.uniform2f(this.uvMaxLocation, 1, 1);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  draw(videos: Array<{ element: HTMLVideoElement; x: number; y: number }>) {
+  draw(
+    videos: Array<{ element: HTMLVideoElement; x: number; y: number }>,
+    zone: ZoneRect,
+  ) {
     const gl = this.gl;
     gl.useProgram(this.program);
     gl.uniform2f(
@@ -271,9 +304,24 @@ export class WebGLPreviewRenderer {
 
     this.drawBackground();
 
+    const scissorLeft = Math.max(0, Math.floor(zone.left));
+    const scissorTop = Math.max(0, Math.floor(zone.top));
+    const scissorWidth = Math.max(1, Math.floor(zone.width));
+    const scissorHeight = Math.max(1, Math.floor(zone.height));
+
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(
+      scissorLeft,
+      Math.max(0, this.canvas.height - scissorTop - scissorHeight),
+      scissorWidth,
+      scissorHeight,
+    );
+
     for (const video of videos) {
-      this.drawLayer(video.element, 1, video.x, video.y);
+      this.drawLayer(video.element, 1, video.x, video.y, zone);
     }
+
+    gl.disable(gl.SCISSOR_TEST);
   }
 
   dispose() {

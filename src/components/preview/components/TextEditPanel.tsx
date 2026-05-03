@@ -47,7 +47,7 @@ export function TextEditPanel({
   };
 
   return (
-    <div className="absolute right-0 top-0 h-full w-60 z-50 flex flex-col border-l border-border bg-background shadow-2xl transition-transform duration-200">
+    <div className="absolute right-0 top-0 z-2600 flex h-full w-60 flex-col border-l border-border bg-background shadow-2xl transition-transform duration-200">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold">Edit Text</span>

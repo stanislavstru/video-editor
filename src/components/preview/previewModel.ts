@@ -60,7 +60,7 @@ function getActiveClipByRow(rows: Row[], clips: Clip[], currentTime: number) {
 
     const prev = activeByRow.get(clip.rowId);
     if (!prev || clip.start >= prev.start) {
-      activeByRow.set(clip.rowId, clip);
+      activeByRow.set(clip.rowId, clip as VisualClip);
     }
   }
 
@@ -92,14 +92,15 @@ export function getVisibleTextLayers(
     return active?.type === "video";
   });
 
-  return rows
-    .map((row, index) => {
-      const active = activeByRow.get(row.id);
-      if (!active || active.type !== "text") return null;
-      if (topVideoIndex !== -1 && index > topVideoIndex) return null;
-      return active;
-    })
-    .filter((clip): clip is Clip => Boolean(clip));
+  const visibleTexts: Clip[] = [];
+  for (const [index, row] of rows.entries()) {
+    const active = activeByRow.get(row.id);
+    if (!active || active.type !== "text") continue;
+    if (topVideoIndex !== -1 && index > topVideoIndex) continue;
+    visibleTexts.push(active);
+  }
+
+  return visibleTexts;
 }
 
 export function getTopVisibleVideoLayer(

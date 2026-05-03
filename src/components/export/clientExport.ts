@@ -15,10 +15,7 @@ import {
 import type { Quality } from "mediabunny";
 
 import type { Clip, Row } from "../../store/editorStore";
-import {
-  getActiveVisualLayers,
-  getMediaTime,
-} from "../preview/previewModel";
+import { getActiveVisualLayers, getMediaTime } from "../preview/previewModel";
 
 export type ExportQuality = "low" | "medium" | "high" | "very_high";
 export type ExportFormat = "auto" | "mp4" | "webm";
@@ -45,6 +42,31 @@ interface ExportOptions {
 export interface ExportResult {
   blob: Blob;
   extension: string;
+}
+
+const PREVIEW_ZONE_INSET_RATIO = 0.04;
+
+interface PreviewZoneRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getPreviewZoneRect(width: number, height: number): PreviewZoneRect {
+  const insetX = width * PREVIEW_ZONE_INSET_RATIO;
+  const insetY = height * PREVIEW_ZONE_INSET_RATIO;
+
+  return {
+    left: insetX,
+    top: insetY,
+    width: Math.max(1, width - insetX * 2),
+    height: Math.max(1, height - insetY * 2),
+  };
 }
 
 // ─── Canvas helpers ───────────────────────────────────────────────────────────
@@ -114,35 +136,39 @@ function drawBackground(
   ctx.fillRect(0, 0, width, height);
 }
 
-function drawVideoCoverWithPan(
+function drawVideoInPreviewZone(
   ctx: CanvasRenderingContext2D,
   clip: Clip,
   video: HTMLVideoElement,
-  width: number,
-  height: number,
+  zone: PreviewZoneRect,
 ) {
-  const videoWidth = video.videoWidth || width;
-  const videoHeight = video.videoHeight || height;
+  const videoWidth = video.videoWidth || zone.width;
+  const videoHeight = video.videoHeight || zone.height;
   const sourceRatio = videoWidth / Math.max(1, videoHeight);
-  const targetRatio = width / Math.max(1, height);
+  const targetRatio = zone.width / Math.max(1, zone.height);
 
-  const centerX = Math.max(0, Math.min(1, clip.videoX ?? 0.5));
-  const centerY = Math.max(0, Math.min(1, clip.videoY ?? 0.5));
-
-  let sx = 0;
-  let sy = 0;
-  let sWidth = videoWidth;
-  let sHeight = videoHeight;
+  let drawWidth = zone.width;
+  let drawHeight = zone.height;
 
   if (sourceRatio > targetRatio) {
-    sWidth = videoHeight * targetRatio;
-    sx = (videoWidth - sWidth) * centerX;
+    drawWidth = zone.width;
+    drawHeight = zone.width / Math.max(sourceRatio, 0.00001);
   } else {
-    sHeight = videoWidth / targetRatio;
-    sy = (videoHeight - sHeight) * centerY;
+    drawHeight = zone.height;
+    drawWidth = zone.height * sourceRatio;
   }
 
-  ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, width, height);
+  const centerX = zone.left + clamp01(clip.videoX ?? 0.5) * zone.width;
+  const centerY = zone.top + clamp01(clip.videoY ?? 0.5) * zone.height;
+  const dx = centerX - drawWidth / 2;
+  const dy = centerY - drawHeight / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(zone.left, zone.top, zone.width, zone.height);
+  ctx.clip();
+  ctx.drawImage(video, dx, dy, drawWidth, drawHeight);
+  ctx.restore();
 }
 
 async function renderFrameAtTime(
@@ -168,13 +194,14 @@ async function renderFrameAtTime(
   await Promise.all(seekTasks);
 
   drawBackground(ctx, width, height);
+  const previewZone = getPreviewZoneRect(width, height);
 
   let textFallbackIndex = 0;
   for (const clip of activeLayers) {
     if (clip.type === "video") {
       const video = videoElements.get(clip.id);
       if (!video) continue;
-      drawVideoCoverWithPan(ctx, clip, video, width, height);
+      drawVideoInPreviewZone(ctx, clip, video, previewZone);
       continue;
     }
 
