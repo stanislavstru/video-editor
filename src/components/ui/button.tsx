@@ -10,9 +10,9 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          "border border-color-border-full bg-surface text-text-color hover:bg-surface-hover hover:text-text-color disabled:border-color-border disabled:text-text-color-disabled",
+          "border border-color-border-full bg-surface text-text-color hover:bg-surface-hover hover:text-text-color disabled:border-color-border disabled:text-text-color-disabled uppercase",
         secondary:
-          "bg-action-bg text-text-color-inverse hover:bg-action-bg-hover active:bg-action-bg-active disabled:bg-text-color-disabled",
+          "bg-action-bg text-text-color-inverse hover:bg-action-bg-hover active:bg-action-bg-active disabled:bg-text-color-disabled uppercase",
       },
     },
     defaultVariants: {

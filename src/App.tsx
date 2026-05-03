@@ -1,4 +1,5 @@
 import { Sidebar } from "./components/sidebar/Sidebar";
+import { Preview } from "./components/preview/Preview";
 import { Timeline } from "./components/timeline/Timeline";
 
 function App() {
@@ -7,7 +8,9 @@ function App() {
       <Sidebar />
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-hidden bg-background" />
+        <main className="flex-1 overflow-hidden bg-surface-raised">
+          <Preview />
+        </main>
         <div className="h-64 shrink-0 border-t border-zinc-800">
           <Timeline />
         </div>
@@ -15,6 +18,5 @@ function App() {
     </div>
   );
 }
-
 
 export default App;
