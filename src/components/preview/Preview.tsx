@@ -956,6 +956,7 @@ export const Preview = () => {
           onUpdateTextClipPosition={updateTextClipPosition}
           onDeleteClip={deleteClip}
           onOpenEditor={(clipId) => setEditingClipId(clipId)}
+          onSelectClip={selectClip}
         />
 
         <PreviewOverlayMessages

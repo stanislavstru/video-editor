@@ -47,6 +47,8 @@ export function TrackRow({
   onDeleteRow,
 }: TrackRowProps) {
   const isGhostRow = ghostRowId === row.id;
+  const isActiveRow =
+    selectedClipId !== null && clips.some((c) => c.id === selectedClipId);
   const rowHeight = getRowHeight(row.type);
   const canMute = row.type === "audio" || row.type === "video";
 
@@ -54,8 +56,15 @@ export function TrackRow({
     <div className="flex" style={{ height: rowHeight }}>
       {/* Label */}
       <div
-        className="shrink-0 flex items-center px-3 text-[11px] font-medium text-muted-foreground border-r border-border bg-muted"
-        style={{ width: ROW_LABEL_WIDTH, height: rowHeight }}
+        className="shrink-0 flex items-center px-3 text-[11px] font-medium border-r border-border bg-muted transition-colors"
+        style={{
+          width: ROW_LABEL_WIDTH,
+          height: rowHeight,
+          color: isActiveRow ? "var(--color-foreground)" : undefined,
+          borderLeft: isActiveRow
+            ? "2px solid #e84040"
+            : "2px solid transparent",
+        }}
       >
         <div className="flex w-full flex-col items-start justify-center gap-1">
           <span className="w-full truncate">{row.label}</span>
@@ -92,11 +101,15 @@ export function TrackRow({
 
       {/* Track area */}
       <div
-        className="relative border-b border-border"
+        className="relative border-b border-border transition-colors"
         style={{
           width: totalWidth,
           height: rowHeight,
-          backgroundColor: isGhostRow ? "rgba(255,255,255,0.04)" : undefined,
+          backgroundColor: isActiveRow
+            ? "rgba(232,64,64,0.06)"
+            : isGhostRow
+              ? "rgba(255,255,255,0.04)"
+              : undefined,
           flexShrink: 0,
         }}
         onPointerDown={(e) => onRowPointerDown(e, row.id)}

@@ -16,6 +16,7 @@ interface DraggableTextOverlaysProps {
   onUpdateTextClipPosition: (clipId: string, x: number, y: number) => void;
   onDeleteClip: (clipId: string) => void;
   onOpenEditor: (clipId: string) => void;
+  onSelectClip: (clipId: string) => void;
 }
 
 type DragState = {
@@ -44,14 +45,12 @@ export function DraggableTextOverlays({
   onUpdateTextClipPosition,
   onDeleteClip,
   onOpenEditor,
+  onSelectClip,
 }: DraggableTextOverlaysProps) {
   const textDragRef = useRef<DragState | null>(null);
   const textElementRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastAutoFocusedClipIdRef = useRef<string | null>(null);
   const [draggingTextClipId, setDraggingTextClipId] = useState<string | null>(
-    null,
-  );
-  const [focusedTextClipId, setFocusedTextClipId] = useState<string | null>(
     null,
   );
 
@@ -69,7 +68,6 @@ export function DraggableTextOverlays({
     const element = textElementRefs.current.get(selectedClipId);
     if (!element) return;
 
-    setFocusedTextClipId(selectedClipId);
     element.focus();
     lastAutoFocusedClipIdRef.current = selectedClipId;
   }, [activeTextClips, selectedClipId]);
@@ -102,7 +100,7 @@ export function DraggableTextOverlays({
       {activeTextClips.map((clip, index) => {
         const position = getTextPosition(clip, index);
         const isHighlighted =
-          draggingTextClipId === clip.id || focusedTextClipId === clip.id;
+          draggingTextClipId === clip.id || selectedClipId === clip.id;
 
         return (
           <div
@@ -166,12 +164,10 @@ export function DraggableTextOverlays({
                 fontFamily: "sans-serif",
                 fontWeight: 500,
               }}
-              onFocus={() => setFocusedTextClipId(clip.id)}
-              onBlur={() => {
-                setFocusedTextClipId((prev) =>
-                  prev === clip.id ? null : prev,
-                );
+              onFocus={() => {
+                onSelectClip(clip.id);
               }}
+              onBlur={() => {}}
               onPointerDown={(e) => {
                 const container = containerRef.current;
                 if (!container) return;
@@ -189,7 +185,7 @@ export function DraggableTextOverlays({
                   offsetY: pointerY - y,
                 };
                 setDraggingTextClipId(clip.id);
-                setFocusedTextClipId(clip.id);
+                onSelectClip(clip.id);
                 e.currentTarget.focus();
 
                 e.currentTarget.setPointerCapture(e.pointerId);

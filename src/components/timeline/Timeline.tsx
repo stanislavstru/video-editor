@@ -695,11 +695,12 @@ export function Timeline() {
 
       {/* Keyboard hints */}
       <div className="flex gap-4 px-3 py-1 border-t border-border text-[10px] text-muted-foreground shrink-0">
-        <span>Space: play/pause</span>
-        <span>S: split at playhead</span>
-        <span>Del: delete clip</span>
-        <span>Ctrl+Z: undo</span>
-        <span>Ctrl+Wheel: zoom</span>
+        <span>Space play/pause</span>
+        <span>S split</span>
+        <span>⌫ delete</span>
+        <span>⌘Z undo</span>
+        <span>⌘⇧Z redo</span>
+        <span>⌘⇕ zoom</span>
       </div>
     </div>
   );

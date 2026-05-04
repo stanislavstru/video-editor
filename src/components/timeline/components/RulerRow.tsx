@@ -30,10 +30,7 @@ export function RulerRow({
   const rulerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
 
-  const timeToRulerLeft = useCallback(
-    (t: number) => timeToPx(t, zoom),
-    [zoom],
-  );
+  const timeToRulerLeft = useCallback((t: number) => timeToPx(t, zoom), [zoom]);
 
   const pxToClampedTime = useCallback(
     (clientX: number) => {
@@ -148,4 +145,3 @@ export function RulerRow({
     </div>
   );
 }
-
