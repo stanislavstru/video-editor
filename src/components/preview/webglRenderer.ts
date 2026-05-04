@@ -105,7 +105,8 @@ export class WebGLPreviewRenderer {
   private readonly texCoordBuffer: WebGLBuffer;
   // Per-video texture cache: retains the last decoded frame so that seeking
   // (readyState < HAVE_CURRENT_DATA) does not cause a flash to background.
-  private readonly textureCache: Map<HTMLVideoElement, WebGLTexture> = new Map();
+  private readonly textureCache: Map<HTMLVideoElement, WebGLTexture> =
+    new Map();
   private readonly hasTextureLocation: WebGLUniformLocation;
   private readonly opacityLocation: WebGLUniformLocation;
   private readonly resolutionLocation: WebGLUniformLocation;
@@ -285,11 +286,19 @@ export class WebGLPreviewRenderer {
     // is no flash to background while the decoder catches up.
     if (isReady) {
       gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        video,
+      );
     } else {
       // If we have never uploaded a frame for this video yet, skip drawing
       // entirely — there is nothing to show.
-      const hasData = (texture as WebGLTexture & { _hasData?: boolean })._hasData;
+      const hasData = (texture as WebGLTexture & { _hasData?: boolean })
+        ._hasData;
       if (!hasData) return;
       gl.bindTexture(gl.TEXTURE_2D, texture);
     }

@@ -270,39 +270,39 @@ export const Preview = () => {
       const container = containerRef.current;
       if (!renderer || !container) return;
 
-    const cssWidth = Math.max(1, container.clientWidth);
-    const cssHeight = Math.max(1, container.clientHeight);
-    const cssZone = getPreviewZoneRect(cssWidth, cssHeight);
-    const dprX = canvasRef.current
-      ? canvasRef.current.width / cssWidth
-      : window.devicePixelRatio || 1;
-    const dprY = canvasRef.current
-      ? canvasRef.current.height / cssHeight
-      : window.devicePixelRatio || 1;
-    const zone = {
-      left: cssZone.left * dprX,
-      top: cssZone.top * dprY,
-      width: cssZone.width * dprX,
-      height: cssZone.height * dprY,
-    };
+      const cssWidth = Math.max(1, container.clientWidth);
+      const cssHeight = Math.max(1, container.clientHeight);
+      const cssZone = getPreviewZoneRect(cssWidth, cssHeight);
+      const dprX = canvasRef.current
+        ? canvasRef.current.width / cssWidth
+        : window.devicePixelRatio || 1;
+      const dprY = canvasRef.current
+        ? canvasRef.current.height / cssHeight
+        : window.devicePixelRatio || 1;
+      const zone = {
+        left: cssZone.left * dprX,
+        top: cssZone.top * dprY,
+        width: cssZone.width * dprX,
+        height: cssZone.height * dprY,
+      };
 
-    const videos: Array<{
-      element: HTMLVideoElement;
-      x: number;
-      y: number;
-      scale: number;
-    }> = [];
-    for (const clip of activeVideoClipsRef.current) {
-      const managed = videoRegistryRef.current.get(clip.id);
-      if (managed) {
-        videos.push({
-          element: managed.element,
-          x: clamp01(clip.videoX ?? 0.5),
-          y: clamp01(clip.videoY ?? 0.5),
-          scale: clampScale(clip.videoScale ?? 1),
-        });
+      const videos: Array<{
+        element: HTMLVideoElement;
+        x: number;
+        y: number;
+        scale: number;
+      }> = [];
+      for (const clip of activeVideoClipsRef.current) {
+        const managed = videoRegistryRef.current.get(clip.id);
+        if (managed) {
+          videos.push({
+            element: managed.element,
+            x: clamp01(clip.videoX ?? 0.5),
+            y: clamp01(clip.videoY ?? 0.5),
+            scale: clampScale(clip.videoScale ?? 1),
+          });
+        }
       }
-    }
 
       renderer.draw(videos, zone);
     });
@@ -333,7 +333,12 @@ export const Preview = () => {
       width: cssZone.width * dprX,
       height: cssZone.height * dprY,
     };
-    const videos: Array<{ element: HTMLVideoElement; x: number; y: number; scale: number }> = [];
+    const videos: Array<{
+      element: HTMLVideoElement;
+      x: number;
+      y: number;
+      scale: number;
+    }> = [];
     for (const clip of activeVideoClipsRef.current) {
       const managed = videoRegistryRef.current.get(clip.id);
       if (managed) {

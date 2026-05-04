@@ -16,7 +16,7 @@ import {
   MIN_CLIP_DURATION,
 } from "./constants";
 import type { DragState } from "./types";
-import { Ruler } from "./components/Ruler";
+import { RulerRow } from "./components/RulerRow";
 import { TrackRow } from "./components/TrackRow";
 
 const NEW_ROW_DROP_ZONE_HEIGHT = 48;
@@ -70,7 +70,6 @@ export function Timeline() {
   const redo = useEditorStore((s) => s.redo);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const rulerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const playStartRef = useRef<{ wallTime: number; editorTime: number } | null>(
     null,
@@ -148,20 +147,6 @@ export function Timeline() {
     undo,
     redo,
   ]);
-
-  // ─── Ruler click → seek ───────────────────────────────────────────────────
-  const onRulerPointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (!scrollRef.current) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const scrollLeft = scrollRef.current.scrollLeft;
-      const px = e.clientX - rect.left + scrollLeft;
-      const t = Math.max(0, Math.min(pxToTime(px, zoom), duration));
-      setCurrentTime(snapTime(t, SNAP_GRID));
-      setPlaying(false);
-    },
-    [zoom, duration, setCurrentTime, setPlaying],
-  );
 
   // ─── Clip drag (move) ─────────────────────────────────────────────────────
   const onPointerDownClip = useCallback(
@@ -538,28 +523,15 @@ export function Timeline() {
         style={{ overflowX: "auto", overflowY: "auto" }}
       >
         {/* Ruler row */}
-        <div
-          className="flex"
-          style={{ minWidth: totalWidth + ROW_LABEL_WIDTH }}
-        >
-          <div
-            className="shrink-0 bg-muted border-r border-b border-border z-20"
-            style={{
-              width: ROW_LABEL_WIDTH,
-              height: RULER_HEIGHT,
-              position: "sticky",
-              left: 0,
-            }}
-          />
-          <div
-            ref={rulerRef}
-            className="relative bg-muted border-b border-border cursor-pointer z-10"
-            style={{ height: RULER_HEIGHT, flex: 1 }}
-            onPointerDown={onRulerPointerDown}
-          >
-            <Ruler zoom={zoom} duration={duration} />
-          </div>
-        </div>
+        <RulerRow
+          zoom={zoom}
+          duration={duration}
+          totalWidth={totalWidth}
+          currentTime={currentTime}
+          scrollRef={scrollRef}
+          setCurrentTime={setCurrentTime}
+          setPlaying={setPlaying}
+        />
 
         {/* Tracks */}
         <div
