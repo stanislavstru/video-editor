@@ -252,6 +252,7 @@ export class WebGLPreviewRenderer {
     opacity: number,
     centerX: number,
     centerY: number,
+    scale: number,
     zone: ZoneRect,
   ) {
     const gl = this.gl;
@@ -270,15 +271,16 @@ export class WebGLPreviewRenderer {
       videoAspect > zoneAspect
         ? zone.width / Math.max(videoAspect, 0.00001)
         : zone.height;
+    const scaleValue = Math.max(0.2, Math.min(4, scale));
 
     const targetCenterX = zone.left + this.clamp01(centerX) * zone.width;
     const targetCenterY = zone.top + this.clamp01(centerY) * zone.height;
 
     this.setPositionQuad(
-      targetCenterX - renderWidth / 2,
-      targetCenterY - renderHeight / 2,
-      renderWidth,
-      renderHeight,
+      targetCenterX - (renderWidth * scaleValue) / 2,
+      targetCenterY - (renderHeight * scaleValue) / 2,
+      renderWidth * scaleValue,
+      renderHeight * scaleValue,
     );
 
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -291,7 +293,12 @@ export class WebGLPreviewRenderer {
   }
 
   draw(
-    videos: Array<{ element: HTMLVideoElement; x: number; y: number }>,
+    videos: Array<{
+      element: HTMLVideoElement;
+      x: number;
+      y: number;
+      scale: number;
+    }>,
     zone: ZoneRect,
   ) {
     const gl = this.gl;
@@ -318,7 +325,7 @@ export class WebGLPreviewRenderer {
     );
 
     for (const video of videos) {
-      this.drawLayer(video.element, 1, video.x, video.y, zone);
+      this.drawLayer(video.element, 1, video.x, video.y, video.scale, zone);
     }
 
     gl.disable(gl.SCISSOR_TEST);

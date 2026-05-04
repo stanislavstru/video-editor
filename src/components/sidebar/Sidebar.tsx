@@ -47,7 +47,7 @@ export const Sidebar = () => {
           </button>
         ))}
       </div>
-      <div className="w-full p-2 bg-surface text-text">
+      <div className="flex-1 min-w-0 p-2 bg-surface text-text overflow-hidden">
         {activeTab === "media" && <MediaStore />}
         {activeTab === "text" && <Text />}
         {activeTab === "export" && <ExportPanel />}

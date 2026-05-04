@@ -14,7 +14,7 @@ export function MediaItemCard({
   onRemove,
 }: MediaItemCardProps) {
   return (
-    <div className="group flex flex-col gap-2 border border-border bg-background p-2 transition-colors hover:bg-muted/30">
+    <div className="group flex flex-col gap-2 border border-border bg-background p-2 transition-colors hover:bg-muted/30 min-w-0 overflow-hidden">
       <MediaPreview item={item} />
 
       <div className="flex items-start justify-between gap-2">

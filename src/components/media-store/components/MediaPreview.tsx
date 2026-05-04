@@ -19,14 +19,15 @@ export function MediaPreview({ item }: MediaPreviewProps) {
   }
 
   return (
-    <div className="overflow-hidden border border-border bg-black">
+    <div className="overflow-hidden border border-border bg-black w-full">
       <video
         src={item.src}
         preload="metadata"
         muted
         playsInline
         controls
-        className="aspect-video w-full bg-black object-cover"
+        className="w-full bg-black object-contain"
+        style={{ maxHeight: "160px" }}
       />
     </div>
   );

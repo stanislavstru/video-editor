@@ -44,8 +44,6 @@ export interface ExportResult {
   extension: string;
 }
 
-const PREVIEW_ZONE_INSET_RATIO = 0.04;
-
 interface PreviewZoneRect {
   left: number;
   top: number;
@@ -57,15 +55,16 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function getPreviewZoneRect(width: number, height: number): PreviewZoneRect {
-  const insetX = width * PREVIEW_ZONE_INSET_RATIO;
-  const insetY = height * PREVIEW_ZONE_INSET_RATIO;
+function clampScale(value: number): number {
+  return Math.max(0.2, Math.min(4, value));
+}
 
+function getPreviewZoneRect(width: number, height: number): PreviewZoneRect {
   return {
-    left: insetX,
-    top: insetY,
-    width: Math.max(1, width - insetX * 2),
-    height: Math.max(1, height - insetY * 2),
+    left: 0,
+    top: 0,
+    width: Math.max(1, width),
+    height: Math.max(1, height),
   };
 }
 
@@ -147,27 +146,26 @@ function drawVideoInPreviewZone(
   const sourceRatio = videoWidth / Math.max(1, videoHeight);
   const targetRatio = zone.width / Math.max(1, zone.height);
 
-  let drawWidth = zone.width;
-  let drawHeight = zone.height;
-
-  if (sourceRatio > targetRatio) {
-    drawWidth = zone.width;
-    drawHeight = zone.width / Math.max(sourceRatio, 0.00001);
-  } else {
-    drawHeight = zone.height;
-    drawWidth = zone.height * sourceRatio;
-  }
+  const drawWidth =
+    sourceRatio > targetRatio ? zone.width : zone.height * sourceRatio;
+  const drawHeight =
+    sourceRatio > targetRatio
+      ? zone.width / Math.max(sourceRatio, 0.00001)
+      : zone.height;
 
   const centerX = zone.left + clamp01(clip.videoX ?? 0.5) * zone.width;
   const centerY = zone.top + clamp01(clip.videoY ?? 0.5) * zone.height;
-  const dx = centerX - drawWidth / 2;
-  const dy = centerY - drawHeight / 2;
+  const scale = clampScale(clip.videoScale ?? 1);
+  const scaledWidth = drawWidth * scale;
+  const scaledHeight = drawHeight * scale;
+  const dx = centerX - scaledWidth / 2;
+  const dy = centerY - scaledHeight / 2;
 
   ctx.save();
   ctx.beginPath();
   ctx.rect(zone.left, zone.top, zone.width, zone.height);
   ctx.clip();
-  ctx.drawImage(video, dx, dy, drawWidth, drawHeight);
+  ctx.drawImage(video, dx, dy, scaledWidth, scaledHeight);
   ctx.restore();
 }
 

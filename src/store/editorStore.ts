@@ -32,6 +32,8 @@ export interface Clip {
   /** Normalized video center position on preview/export canvas, 0..1 */
   videoX?: number;
   videoY?: number;
+  /** Video scale multiplier for preview/export transforms */
+  videoScale?: number;
 }
 
 export interface Row {
@@ -121,6 +123,7 @@ interface EditorState {
   addTextClip: (label: string, startAt?: number, duration?: number) => void;
   updateTextClipPosition: (clipId: string, x: number, y: number) => void;
   updateVideoClipPosition: (clipId: string, x: number, y: number) => void;
+  updateVideoClipScale: (clipId: string, scale: number) => void;
   deleteClip: (clipId: string) => void;
   updateClipLabel: (clipId: string, label: string) => void;
   updateTextClipStyle: (clipId: string, color: string, size: number) => void;
@@ -394,7 +397,7 @@ export const useEditorStore = create<EditorState>()(
       const media = s.mediaItems.find((m) => m.id === mediaId);
       if (!media) return;
       set((draft) => {
-        const targetRow = ensureRowForType(draft.rows, media.type);
+        const targetRow = createRow(draft.rows, media.type);
         const startTime = draft.clips
           .filter((clip) => clip.rowId === targetRow.id)
           .reduce((max, clip) => Math.max(max, clip.start + clip.duration), 0);
@@ -411,6 +414,7 @@ export const useEditorStore = create<EditorState>()(
           sourceDuration: media.duration,
           videoX: media.type === "video" ? 0.5 : undefined,
           videoY: media.type === "video" ? 0.5 : undefined,
+          videoScale: media.type === "video" ? 1 : undefined,
         };
         const cmd: Command = { type: "ADD_CLIP", clip };
 
@@ -425,8 +429,8 @@ export const useEditorStore = create<EditorState>()(
       const normalizedLabel = label.trim() || "Text";
       const currentTime = get().currentTime;
       set((draft) => {
-        // Each text insert gets its own row so quick-add templates don't overlap.
-        const targetRow = createRow(draft.rows, "text");
+        // Keep quick-add text clips on dedicated rows while always inserting as first timeline track.
+        const targetRow = createRow(draft.rows, "text", 0);
         const defaultDuration = 4;
         const clipDuration = Math.max(0.2, duration ?? defaultDuration);
         const startTime = Math.max(0, startAt ?? currentTime);
@@ -474,6 +478,16 @@ export const useEditorStore = create<EditorState>()(
         if (!clip || clip.type !== "video") return;
         clip.videoX = clampedX;
         clip.videoY = clampedY;
+      });
+    },
+
+    updateVideoClipScale: (clipId, scale) => {
+      const clampedScale = Math.max(0.2, Math.min(4, scale));
+
+      set((draft) => {
+        const clip = draft.clips.find((c) => c.id === clipId);
+        if (!clip || clip.type !== "video") return;
+        clip.videoScale = clampedScale;
       });
     },
 

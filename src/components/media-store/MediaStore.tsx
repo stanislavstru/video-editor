@@ -79,7 +79,7 @@ export const MediaStore = () => {
         onChange={onFiles}
       />
 
-      <div className="flex flex-col gap-1 overflow-y-auto">
+      <div className="flex flex-col gap-1 overflow-y-auto min-w-0 overflow-x-hidden">
         {mediaItems.length === 0 && (
           <p className="text-xs text-gray-500 text-center py-4">No media yet</p>
         )}
