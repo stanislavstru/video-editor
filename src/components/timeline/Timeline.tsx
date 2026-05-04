@@ -5,8 +5,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useEditorStore } from "../../store/editorStore";
-import type { Clip, Row } from "../../store/editorStore";
+import { useEditorStore, type Clip, type Row } from "../../store/editorStore";
 import { timeToPx, pxToTime, snapTime, formatTime } from "./utils";
 import {
   getClipHeight,
@@ -283,7 +282,7 @@ export function Timeline() {
         );
 
         let hoveredRowId: string | null = dragState.startRowId;
-        let ghostRowType = clip.type;
+        const ghostRowType = clip.type;
         let newRowPosition: "top" | "middle" | "bottom" | null = null;
         let newRowInsertIndex: number | null = null;
 
@@ -316,7 +315,11 @@ export function Timeline() {
         const firstRowTop = rowElements[0]?.top;
         const lastRowBottom = rowElements[rowElements.length - 1]?.bottom;
 
-        if (hoveredRowIndex === -1 && firstRowTop !== undefined && e.clientY < firstRowTop) {
+        if (
+          hoveredRowIndex === -1 &&
+          firstRowTop !== undefined &&
+          e.clientY < firstRowTop
+        ) {
           hoveredRowId = null;
           newRowPosition = "top";
           newRowInsertIndex = 0;
@@ -406,7 +409,7 @@ export function Timeline() {
       }
     };
 
-    const onPointerUp = (_e: PointerEvent) => {
+    const onPointerUp = () => {
       if (dragState.kind === "moving") {
         const ds = dragState as DragState & {
           _pendingStart?: number;
@@ -419,10 +422,9 @@ export function Timeline() {
           shouldCreateNewRow && typeof ds._pendingNewRowInsertIndex === "number"
             ? ds._pendingNewRowInsertIndex
             : undefined;
-        const createdRow =
-          shouldCreateNewRow
-            ? createRowOfType(dragState.ghostRowType, insertIndex)
-            : null;
+        const createdRow = shouldCreateNewRow
+          ? createRowOfType(dragState.ghostRowType, insertIndex)
+          : null;
         const toRowId =
           createdRow?.id ?? ds._pendingRowId ?? dragState.startRowId;
         moveClip(dragState.clipId, toRowId, toStart);
@@ -444,12 +446,9 @@ export function Timeline() {
   }, [dragState, zoom, rows, clips, createRowOfType, moveClip, trimClip]);
 
   // ─── Row click (deselect) ─────────────────────────────────────────────────
-  const onRowPointerDown = useCallback(
-    (_e: ReactPointerEvent<HTMLDivElement>, _rowId: string) => {
-      selectClip(null);
-    },
-    [selectClip],
-  );
+  const onRowPointerDown = useCallback(() => {
+    selectClip(null);
+  }, [selectClip]);
 
   // ─── Zoom via wheel ───────────────────────────────────────────────────────
   const onWheel = useCallback(
@@ -482,8 +481,7 @@ export function Timeline() {
   const showNewTopRowDropZone =
     dragState.kind === "moving" && dragState.ghostNewRowPosition === "top";
   const showNewBottomRowDropZone =
-    dragState.kind === "moving" &&
-    dragState.ghostNewRowPosition === "bottom";
+    dragState.kind === "moving" && dragState.ghostNewRowPosition === "bottom";
   const showNewMiddleRowDropZone =
     dragState.kind === "moving" && dragState.ghostNewRowPosition === "middle";
 
@@ -599,7 +597,10 @@ export function Timeline() {
                 className="absolute inset-x-0 z-20 flex"
                 style={{
                   height: NEW_ROW_DROP_ZONE_HEIGHT,
-                  top: getTopByInsertIndex(rows, dragState.ghostNewRowInsertIndex),
+                  top: getTopByInsertIndex(
+                    rows,
+                    dragState.ghostNewRowInsertIndex,
+                  ),
                 }}
               >
                 <div
@@ -692,7 +693,7 @@ export function Timeline() {
                   : ds.ghostNewRowPosition === "middle" &&
                       ds.ghostNewRowInsertIndex !== null
                     ? getTopByInsertIndex(rows, ds.ghostNewRowInsertIndex)
-                  : rowsHeight;
+                    : rowsHeight;
               const ghostHeight = ghostRow
                 ? getClipHeight(ghostRow.type)
                 : getClipHeight(ds.ghostRowType);
