@@ -254,6 +254,10 @@ export const useEditorStore = create<EditorState>()(
         const c = draft.clips.find((c) => c.id === clipId)!;
         c.start = newStart;
         c.duration = newDuration;
+        // For text clips, sourceDuration grows with the clip (no source media limit).
+        if (c.type === "text") {
+          c.sourceDuration = Math.max(c.sourceDuration, newDuration);
+        }
         draft.duration = recalcDuration(draft.clips);
         draft.undoStack.push(cmd);
         draft.redoStack = [];

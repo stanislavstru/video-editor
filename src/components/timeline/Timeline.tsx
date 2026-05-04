@@ -387,9 +387,12 @@ export function Timeline() {
           }));
         } else {
           const rawDuration = dragState.startClipDuration + deltaSec;
-          // Can't extend beyond the available source material
+          // Text clips have no source duration limit — allow stretching freely.
+          const clipType = clips.find((c) => c.id === dragState.clipId)?.type;
           const maxDuration =
-            dragState.sourceDuration - dragState.startTrimStart;
+            clipType === "text"
+              ? Infinity
+              : dragState.sourceDuration - dragState.startTrimStart;
           const newDuration = snapTime(
             Math.min(Math.max(MIN_CLIP_DURATION, rawDuration), maxDuration),
             SNAP_GRID,

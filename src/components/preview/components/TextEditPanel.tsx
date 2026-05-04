@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import type { Clip } from "../../../store/editorStore";
 
@@ -29,6 +29,19 @@ export function TextEditPanel({
   const [label, setLabel] = useState(clip.label);
   const [color, setColor] = useState(clip.textColor ?? "#ffffff");
   const [size, setSize] = useState(clip.textSize ?? 18);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [onClose]);
 
   const commitLabel = () => {
     const normalized = label.trim() || clip.label;
@@ -47,7 +60,7 @@ export function TextEditPanel({
   };
 
   return (
-    <div className="absolute right-0 top-0 z-2600 flex h-full w-60 flex-col border-l border-border bg-background shadow-2xl transition-transform duration-200">
+    <div ref={panelRef} className="absolute right-0 top-0 z-2600 flex h-full w-60 flex-col border-l border-border bg-background shadow-2xl transition-transform duration-200">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold">Edit Text</span>
