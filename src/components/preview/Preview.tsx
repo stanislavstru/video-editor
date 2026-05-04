@@ -184,9 +184,6 @@ export const Preview = () => {
   const [resizingVideoClipId, setResizingVideoClipId] = useState<string | null>(
     null,
   );
-  const [focusedVideoClipId, setFocusedVideoClipId] = useState<string | null>(
-    null,
-  );
   const [frameSize, setFrameSize] = useState({ width: 1, height: 1 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [videoDimensionsByClipId, setVideoDimensionsByClipId] = useState<
@@ -240,10 +237,7 @@ export const Preview = () => {
   }, [activeVideoClips, selectedClipId]);
   const highlightedVideoRect = useMemo(() => {
     const highlightedId =
-      resizingVideoClipId ??
-      draggingVideoClipId ??
-      focusedVideoClipId ??
-      selectedActiveVideoId;
+      resizingVideoClipId ?? draggingVideoClipId ?? selectedActiveVideoId;
     if (!highlightedId) return null;
     return (
       activeVisibleVideoRects.find((rect) => rect.clipId === highlightedId) ??
@@ -253,7 +247,6 @@ export const Preview = () => {
     activeVisibleVideoRects,
     resizingVideoClipId,
     draggingVideoClipId,
-    focusedVideoClipId,
     selectedActiveVideoId,
   ]);
   const highlightedVideoClip = useMemo(() => {
@@ -264,6 +257,27 @@ export const Preview = () => {
       ) ?? null
     );
   }, [activeVideoClips, highlightedVideoRect]);
+
+  useEffect(() => {
+    if (!selectedClipId) {
+      setDraggingVideoClipId(null);
+      setResizingVideoClipId(null);
+      videoDragRef.current = null;
+      videoResizeRef.current = null;
+      return;
+    }
+
+    const isSelectedActiveVideo = activeVideoClips.some(
+      (clip) => clip.id === selectedClipId,
+    );
+
+    if (!isSelectedActiveVideo) {
+      setDraggingVideoClipId(null);
+      setResizingVideoClipId(null);
+      videoDragRef.current = null;
+      videoResizeRef.current = null;
+    }
+  }, [activeVideoClips, selectedClipId]);
 
   const drawActiveFrame = useCallback(() => {
     // Deduplicate: if a draw is already queued for this frame, skip scheduling another.
@@ -897,7 +911,6 @@ export const Preview = () => {
                     highlightedVideoRect.top + highlightedVideoRect.height / 2,
                 };
                 setResizingVideoClipId(highlightedVideoClip.id);
-                setFocusedVideoClipId(highlightedVideoClip.id);
                 selectClip(highlightedVideoClip.id);
                 e.currentTarget.setPointerCapture(e.pointerId);
                 e.stopPropagation();
@@ -944,7 +957,6 @@ export const Preview = () => {
                   .reverse()
                   .find((candidate) => pointInRect(localX, localY, candidate));
                 if (!hitRect) {
-                  setFocusedVideoClipId(null);
                   return;
                 }
 
@@ -967,7 +979,6 @@ export const Preview = () => {
                   offsetY: pointerY - currentY,
                 };
                 setDraggingVideoClipId(clip.id);
-                setFocusedVideoClipId(clip.id);
                 selectClip(clip.id);
                 e.currentTarget.setPointerCapture(e.pointerId);
                 e.preventDefault();
