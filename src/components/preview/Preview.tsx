@@ -265,6 +265,20 @@ export const Preview = () => {
     );
   }, [activeVideoClips, highlightedVideoRect]);
 
+  useEffect(() => {
+    if (!selectedClipId) {
+      setFocusedVideoClipId(null);
+      return;
+    }
+
+    const isSelectedActiveVideo = activeVideoClips.some(
+      (clip) => clip.id === selectedClipId,
+    );
+    if (!isSelectedActiveVideo) {
+      setFocusedVideoClipId(null);
+    }
+  }, [activeVideoClips, selectedClipId]);
+
   const drawActiveFrame = useCallback(() => {
     // Deduplicate: if a draw is already queued for this frame, skip scheduling another.
     if (drawRafRef.current !== null) return;
