@@ -29,6 +29,10 @@ export interface Clip {
   textColor?: string;
   /** Text overlay font size in px */
   textSize?: number;
+  /** Reference preview frame width in px at which textSize was set */
+  textRefWidth?: number;
+  /** Reference preview frame height in px at which textSize was set */
+  textRefHeight?: number;
   /** Normalized video center position on preview/export canvas, 0..1 */
   videoX?: number;
   videoY?: number;
@@ -126,7 +130,13 @@ interface EditorState {
   updateVideoClipScale: (clipId: string, scale: number) => void;
   deleteClip: (clipId: string) => void;
   updateClipLabel: (clipId: string, label: string) => void;
-  updateTextClipStyle: (clipId: string, color: string, size: number) => void;
+  updateTextClipStyle: (
+    clipId: string,
+    color: string,
+    size: number,
+    refWidth?: number,
+    refHeight?: number,
+  ) => void;
 
   undo: () => void;
   redo: () => void;
@@ -519,12 +529,18 @@ export const useEditorStore = create<EditorState>()(
       });
     },
 
-    updateTextClipStyle: (clipId, color, size) => {
+    updateTextClipStyle: (clipId, color, size, refWidth, refHeight) => {
       set((draft) => {
         const clip = draft.clips.find((c) => c.id === clipId);
         if (!clip || clip.type !== "text") return;
         clip.textColor = color;
         clip.textSize = Math.max(10, Math.min(120, size));
+        if (typeof refWidth === "number" && Number.isFinite(refWidth)) {
+          clip.textRefWidth = Math.max(1, refWidth);
+        }
+        if (typeof refHeight === "number" && Number.isFinite(refHeight)) {
+          clip.textRefHeight = Math.max(1, refHeight);
+        }
       });
     },
 

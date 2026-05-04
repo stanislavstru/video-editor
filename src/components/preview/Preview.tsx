@@ -750,7 +750,13 @@ export const Preview = () => {
       onClose={() => setEditingClipId(null)}
       onUpdateLabel={(label) => updateClipLabel(editingTextClip.id, label)}
       onUpdateStyle={(color, size) =>
-        updateTextClipStyle(editingTextClip.id, color, size)
+        updateTextClipStyle(
+          editingTextClip.id,
+          color,
+          size,
+          containerSize.width,
+          containerSize.height,
+        )
       }
     />
   ) : null;

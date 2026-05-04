@@ -169,6 +169,28 @@ function drawVideoInPreviewZone(
   ctx.restore();
 }
 
+function getExportTextSizePx(clip: Clip, width: number, height: number): number {
+  const base = clip.textSize ?? 18;
+  const refWidth = clip.textRefWidth;
+  const refHeight = clip.textRefHeight;
+
+  if (
+    typeof refWidth !== "number" ||
+    typeof refHeight !== "number" ||
+    !Number.isFinite(refWidth) ||
+    !Number.isFinite(refHeight) ||
+    refWidth <= 0 ||
+    refHeight <= 0
+  ) {
+    return base;
+  }
+
+  const scaleX = width / refWidth;
+  const scaleY = height / refHeight;
+  const scale = Math.min(scaleX, scaleY);
+  return Math.max(1, base * scale);
+}
+
 async function renderFrameAtTime(
   rows: Row[],
   clips: Clip[],
@@ -209,7 +231,8 @@ async function renderFrameAtTime(
     const x = Math.max(0, Math.min(1, clip.textX ?? 0.5)) * width;
     const y = Math.max(0, Math.min(1, clip.textY ?? fallbackY)) * height;
 
-    ctx.font = `500 ${clip.textSize ?? 18}px sans-serif`;
+    const exportTextSize = getExportTextSizePx(clip, width, height);
+    ctx.font = `500 ${exportTextSize}px sans-serif`;
     ctx.fillStyle = clip.textColor ?? "#ffffff";
     ctx.fillText(clip.label, x, y);
     textFallbackIndex += 1;
