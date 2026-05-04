@@ -103,7 +103,9 @@ export class WebGLPreviewRenderer {
   private readonly program: WebGLProgram;
   private readonly positionBuffer: WebGLBuffer;
   private readonly texCoordBuffer: WebGLBuffer;
-  private readonly texture: WebGLTexture;
+  // Per-video texture cache: retains the last decoded frame so that seeking
+  // (readyState < HAVE_CURRENT_DATA) does not cause a flash to background.
+  private readonly textureCache: Map<HTMLVideoElement, WebGLTexture> = new Map();
   private readonly hasTextureLocation: WebGLUniformLocation;
   private readonly opacityLocation: WebGLUniformLocation;
   private readonly resolutionLocation: WebGLUniformLocation;
@@ -138,7 +140,7 @@ export class WebGLPreviewRenderer {
     const gl = canvas.getContext("webgl", {
       alpha: false,
       antialias: true,
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
     });
 
     if (!gl) {
@@ -168,8 +170,7 @@ export class WebGLPreviewRenderer {
 
     const positionBuffer = gl.createBuffer();
     const texCoordBuffer = gl.createBuffer();
-    const texture = gl.createTexture();
-    if (!positionBuffer || !texCoordBuffer || !texture) {
+    if (!positionBuffer || !texCoordBuffer) {
       throw new Error("Failed to create WebGL buffers");
     }
 
@@ -178,7 +179,6 @@ export class WebGLPreviewRenderer {
     this.program = program;
     this.positionBuffer = positionBuffer;
     this.texCoordBuffer = texCoordBuffer;
-    this.texture = texture;
     this.hasTextureLocation = hasTextureLocation;
     this.opacityLocation = opacityLocation;
     this.resolutionLocation = resolutionLocation;
@@ -190,6 +190,8 @@ export class WebGLPreviewRenderer {
     gl.uniform1f(this.opacityLocation, 1);
     gl.uniform2f(this.uvMinLocation, 0, 0);
     gl.uniform2f(this.uvMaxLocation, 1, 1);
+
+    // No initial texture; textures are created per-video on first upload.
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(
@@ -213,12 +215,6 @@ export class WebGLPreviewRenderer {
     gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
 
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -247,6 +243,31 @@ export class WebGLPreviewRenderer {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
+  private getOrCreateTexture(video: HTMLVideoElement): WebGLTexture {
+    const cached = this.textureCache.get(video);
+    if (cached) return cached;
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error("Failed to create WebGL texture");
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    this.textureCache.set(video, tex);
+    return tex;
+  }
+
+  /** Call when a video element is no longer needed to free its GPU texture. */
+  releaseVideoTexture(video: HTMLVideoElement) {
+    const tex = this.textureCache.get(video);
+    if (tex) {
+      this.gl.deleteTexture(tex);
+      this.textureCache.delete(video);
+    }
+  }
+
   private drawLayer(
     video: HTMLVideoElement,
     opacity: number,
@@ -256,9 +277,25 @@ export class WebGLPreviewRenderer {
     zone: ZoneRect,
   ) {
     const gl = this.gl;
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      return;
+    const isReady = video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    const texture = this.getOrCreateTexture(video);
+
+    // Upload a new frame only when the video has one ready.
+    // When seeking, keep the existing texture (last decoded frame) so there
+    // is no flash to background while the decoder catches up.
+    if (isReady) {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+    } else {
+      // If we have never uploaded a frame for this video yet, skip drawing
+      // entirely — there is nothing to show.
+      const hasData = (texture as WebGLTexture & { _hasData?: boolean })._hasData;
+      if (!hasData) return;
+      gl.bindTexture(gl.TEXTURE_2D, texture);
     }
+
+    // Mark that at least one frame has been uploaded.
+    (texture as WebGLTexture & { _hasData?: boolean })._hasData = true;
 
     const videoAspect =
       (video.videoWidth || this.canvas.width) /
@@ -283,8 +320,6 @@ export class WebGLPreviewRenderer {
       renderHeight * scaleValue,
     );
 
-    gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
     gl.uniform1i(this.hasTextureLocation, 1);
     gl.uniform1f(this.opacityLocation, opacity);
     gl.uniform2f(this.uvMinLocation, 0, 0);
@@ -333,7 +368,10 @@ export class WebGLPreviewRenderer {
 
   dispose() {
     const gl = this.gl;
-    gl.deleteTexture(this.texture);
+    for (const tex of this.textureCache.values()) {
+      gl.deleteTexture(tex);
+    }
+    this.textureCache.clear();
     gl.deleteBuffer(this.positionBuffer);
     gl.deleteBuffer(this.texCoordBuffer);
     gl.deleteProgram(this.program);

@@ -162,6 +162,7 @@ export const Preview = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<WebGLPreviewRenderer | null>(null);
+  const drawRafRef = useRef<number | null>(null);
   const videoRegistryRef = useRef<Map<string, ManagedVideo>>(new Map());
   const audioRegistryRef = useRef<Map<string, ManagedAudio>>(new Map());
   const desiredMediaTimesRef = useRef<Map<string, number>>(new Map());
@@ -261,9 +262,13 @@ export const Preview = () => {
   }, [activeVideoClips, highlightedVideoRect]);
 
   const drawActiveFrame = useCallback(() => {
-    const renderer = rendererRef.current;
-    const container = containerRef.current;
-    if (!renderer || !container) return;
+    // Deduplicate: if a draw is already queued for this frame, skip scheduling another.
+    if (drawRafRef.current !== null) return;
+    drawRafRef.current = requestAnimationFrame(() => {
+      drawRafRef.current = null;
+      const renderer = rendererRef.current;
+      const container = containerRef.current;
+      if (!renderer || !container) return;
 
     const cssWidth = Math.max(1, container.clientWidth);
     const cssHeight = Math.max(1, container.clientHeight);
@@ -299,6 +304,47 @@ export const Preview = () => {
       }
     }
 
+      renderer.draw(videos, zone);
+    });
+  }, []);
+
+  // Draws immediately (synchronous, bypasses RAF dedup).
+  // Use after canvas resize to prevent one black frame.
+  const drawNow = useCallback(() => {
+    if (drawRafRef.current !== null) {
+      cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = null;
+    }
+    const renderer = rendererRef.current;
+    const container = containerRef.current;
+    if (!renderer || !container) return;
+    const cssWidth = Math.max(1, container.clientWidth);
+    const cssHeight = Math.max(1, container.clientHeight);
+    const cssZone = getPreviewZoneRect(cssWidth, cssHeight);
+    const dprX = canvasRef.current
+      ? canvasRef.current.width / cssWidth
+      : window.devicePixelRatio || 1;
+    const dprY = canvasRef.current
+      ? canvasRef.current.height / cssHeight
+      : window.devicePixelRatio || 1;
+    const zone = {
+      left: cssZone.left * dprX,
+      top: cssZone.top * dprY,
+      width: cssZone.width * dprX,
+      height: cssZone.height * dprY,
+    };
+    const videos: Array<{ element: HTMLVideoElement; x: number; y: number; scale: number }> = [];
+    for (const clip of activeVideoClipsRef.current) {
+      const managed = videoRegistryRef.current.get(clip.id);
+      if (managed) {
+        videos.push({
+          element: managed.element,
+          x: clamp01(clip.videoX ?? 0.5),
+          y: clamp01(clip.videoY ?? 0.5),
+          scale: clampScale(clip.videoScale ?? 1),
+        });
+      }
+    }
     renderer.draw(videos, zone);
   }, []);
 
@@ -322,6 +368,9 @@ export const Preview = () => {
 
         setContainerSize({ width, height });
         renderer.resize(width * dpr, height * dpr);
+        // Draw synchronously after resize to prevent one black frame
+        // (canvas.width assignment always clears the canvas).
+        drawNow();
       };
 
       resize();
@@ -342,7 +391,7 @@ export const Preview = () => {
         setInitError(message);
       });
     }
-  }, [drawActiveFrame]);
+  }, [drawActiveFrame, drawNow]);
 
   useEffect(() => {
     const registry = videoRegistryRef.current;
@@ -447,6 +496,7 @@ export const Preview = () => {
           video.removeEventListener("canplay", drawActiveFrame);
           video.pause();
           video.src = "";
+          rendererRef.current?.releaseVideoTexture(video);
         },
       });
       return video;
