@@ -13,6 +13,8 @@ import { WebGLPreviewRenderer } from "./webglRenderer";
 
 const SEEK_EPSILON = 0.08;
 const AUDIO_SEEK_EPSILON = 0.12;
+const PREVIEW_ASPECT_RATIO = 16 / 9;
+const PREVIEW_MAX_WIDTH = 1280;
 
 interface ZoneRect {
   left: number;
@@ -159,6 +161,7 @@ export const Preview = () => {
 
   const [editingClipId, setEditingClipId] = useState<string | null>(null);
 
+  const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<WebGLPreviewRenderer | null>(null);
@@ -184,6 +187,7 @@ export const Preview = () => {
   const [focusedVideoClipId, setFocusedVideoClipId] = useState<string | null>(
     null,
   );
+  const [frameSize, setFrameSize] = useState({ width: 1, height: 1 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [videoDimensionsByClipId, setVideoDimensionsByClipId] = useState<
     Record<string, VideoDimensions>
@@ -356,6 +360,37 @@ export const Preview = () => {
   useEffect(() => {
     activeVideoClipsRef.current = activeVideoClips;
   }, [activeVideoClips]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const resizeFrame = () => {
+      const availableWidth = Math.max(1, viewport.clientWidth);
+      const availableHeight = Math.max(1, viewport.clientHeight);
+      const maxWidth = Math.min(availableWidth, PREVIEW_MAX_WIDTH);
+      const widthFromHeight = availableHeight * PREVIEW_ASPECT_RATIO;
+
+      const nextWidth = Math.min(maxWidth, widthFromHeight);
+      const nextHeight = nextWidth / PREVIEW_ASPECT_RATIO;
+
+      setFrameSize((prev) => {
+        if (
+          Math.abs(prev.width - nextWidth) < 0.5 &&
+          Math.abs(prev.height - nextHeight) < 0.5
+        ) {
+          return prev;
+        }
+        return { width: nextWidth, height: nextHeight };
+      });
+    };
+
+    resizeFrame();
+    const observer = new ResizeObserver(resizeFrame);
+    observer.observe(viewport);
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -749,220 +784,230 @@ export const Preview = () => {
           },
         ]
       : [];
+
   const canResetVideoScale =
     highlightedVideoClip &&
     Math.abs(clampScale(highlightedVideoClip.videoScale ?? 1) - 1) > 0.001;
 
   return (
-    <section className="relative flex h-full w-full items-center justify-center p-6">
+    <section className="relative h-full w-full min-h-0 p-6">
       <div
-        ref={containerRef}
-        className="relative w-full max-w-5xl border border-border bg-black"
-        style={{ aspectRatio: "16 / 9" }}
+        ref={viewportRef}
+        className="flex h-full w-full min-h-0 items-center justify-center"
       >
-        <canvas ref={canvasRef} className="h-full w-full" />
-
         <div
-          className="pointer-events-none absolute border border-dashed border-white/25"
+          ref={containerRef}
+          className="relative border border-border bg-black"
           style={{
-            left: `${previewZone.left}px`,
-            top: `${previewZone.top}px`,
-            width: `${previewZone.width}px`,
-            height: `${previewZone.height}px`,
-            zIndex: 900,
+            width: `${frameSize.width}px`,
+            height: `${frameSize.height}px`,
+            aspectRatio: "16 / 9",
           }}
-        />
+        >
+          <canvas ref={canvasRef} className="h-full w-full" />
 
-        {highlightedVideoRect && (
           <div
-            className="pointer-events-none absolute border-2 border-[#00ff00]"
+            className="pointer-events-none absolute border border-dashed border-white/25"
             style={{
-              left: `${highlightedVideoRect.left}px`,
-              top: `${highlightedVideoRect.top}px`,
-              width: `${highlightedVideoRect.width}px`,
-              height: `${highlightedVideoRect.height}px`,
-              zIndex: 1300,
+              left: `${previewZone.left}px`,
+              top: `${previewZone.top}px`,
+              width: `${previewZone.width}px`,
+              height: `${previewZone.height}px`,
+              zIndex: 900,
             }}
           />
-        )}
 
-        {highlightedVideoRect &&
-          highlightedVideoClip &&
-          editingClipId === null && (
-            <button
-              type="button"
-              className="absolute rounded border border-[#00ff00] bg-black px-2 py-1 text-[11px] font-medium text-[#00ff00] disabled:cursor-default disabled:opacity-50"
+          {highlightedVideoRect && (
+            <div
+              className="pointer-events-none absolute border-2 border-[#00ff00]"
               style={{
                 left: `${highlightedVideoRect.left}px`,
-                top: `${Math.max(0, highlightedVideoRect.top - 28)}px`,
-                zIndex: 1550,
+                top: `${highlightedVideoRect.top}px`,
+                width: `${highlightedVideoRect.width}px`,
+                height: `${highlightedVideoRect.height}px`,
+                zIndex: 1300,
               }}
-              disabled={!canResetVideoScale}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                updateVideoClipScale(highlightedVideoClip.id, 1);
-              }}
-            >
-              Reset
-            </button>
+            />
           )}
 
-        {videoResizeHandles.map((point) => (
-          <button
-            key={point.key}
-            type="button"
-            aria-label={`Resize video ${point.handle}`}
-            className="absolute rounded-full border-2 border-[#00ff00] bg-black"
-            style={{
-              left: `${point.left}px`,
-              top: `${point.top}px`,
-              width: `${RESIZE_HANDLE_SIZE}px`,
-              height: `${RESIZE_HANDLE_SIZE}px`,
-              transform: "translate(-50%, -50%)",
-              zIndex: 1500,
-              cursor:
-                point.handle === "top-left" || point.handle === "bottom-right"
-                  ? "nwse-resize"
-                  : "nesw-resize",
-            }}
-            onPointerDown={(e) => {
-              if (!highlightedVideoRect || !highlightedVideoClip) return;
+          {highlightedVideoRect &&
+            highlightedVideoClip &&
+            editingClipId === null && (
+              <button
+                type="button"
+                className="absolute rounded border border-[#00ff00] bg-black px-2 py-1 text-[11px] font-medium text-[#00ff00] disabled:cursor-default disabled:opacity-50"
+                style={{
+                  left: `${highlightedVideoRect.left}px`,
+                  top: `${Math.max(0, highlightedVideoRect.top - 28)}px`,
+                  zIndex: 1550,
+                }}
+                disabled={!canResetVideoScale}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateVideoClipScale(highlightedVideoClip.id, 1);
+                }}
+              >
+                Reset
+              </button>
+            )}
 
-              const startDistance = Math.hypot(
-                highlightedVideoRect.width / 2,
-                highlightedVideoRect.height / 2,
-              );
+          {videoResizeHandles.map((point) => (
+            <button
+              key={point.key}
+              type="button"
+              aria-label={`Resize video ${point.handle}`}
+              className="absolute rounded-full border-2 border-[#00ff00] bg-black"
+              style={{
+                left: `${point.left}px`,
+                top: `${point.top}px`,
+                width: `${RESIZE_HANDLE_SIZE}px`,
+                height: `${RESIZE_HANDLE_SIZE}px`,
+                transform: "translate(-50%, -50%)",
+                zIndex: 1500,
+                cursor:
+                  point.handle === "top-left" || point.handle === "bottom-right"
+                    ? "nwse-resize"
+                    : "nesw-resize",
+              }}
+              onPointerDown={(e) => {
+                if (!highlightedVideoRect || !highlightedVideoClip) return;
 
-              videoResizeRef.current = {
-                clipId: highlightedVideoClip.id,
-                handle: point.handle,
-                startScale: clampScale(highlightedVideoClip.videoScale ?? 1),
-                startDistance: Math.max(1, startDistance),
-                centerX:
-                  highlightedVideoRect.left + highlightedVideoRect.width / 2,
-                centerY:
-                  highlightedVideoRect.top + highlightedVideoRect.height / 2,
-              };
-              setResizingVideoClipId(highlightedVideoClip.id);
-              setFocusedVideoClipId(highlightedVideoClip.id);
-              selectClip(highlightedVideoClip.id);
-              e.currentTarget.setPointerCapture(e.pointerId);
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            onPointerMove={(e) => {
-              if (videoResizeRef.current?.handle !== point.handle) return;
-              updateResizedVideoScale(e.clientX, e.clientY);
-            }}
-            onPointerUp={(e) => {
-              if (videoResizeRef.current?.handle === point.handle) {
+                const startDistance = Math.hypot(
+                  highlightedVideoRect.width / 2,
+                  highlightedVideoRect.height / 2,
+                );
+
+                videoResizeRef.current = {
+                  clipId: highlightedVideoClip.id,
+                  handle: point.handle,
+                  startScale: clampScale(highlightedVideoClip.videoScale ?? 1),
+                  startDistance: Math.max(1, startDistance),
+                  centerX:
+                    highlightedVideoRect.left + highlightedVideoRect.width / 2,
+                  centerY:
+                    highlightedVideoRect.top + highlightedVideoRect.height / 2,
+                };
+                setResizingVideoClipId(highlightedVideoClip.id);
+                setFocusedVideoClipId(highlightedVideoClip.id);
+                selectClip(highlightedVideoClip.id);
+                e.currentTarget.setPointerCapture(e.pointerId);
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+              onPointerMove={(e) => {
+                if (videoResizeRef.current?.handle !== point.handle) return;
                 updateResizedVideoScale(e.clientX, e.clientY);
-              }
-              videoResizeRef.current = null;
-              setResizingVideoClipId(null);
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-            }}
-            onPointerCancel={(e) => {
-              videoResizeRef.current = null;
-              setResizingVideoClipId(null);
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-            }}
-          />
-        ))}
+              }}
+              onPointerUp={(e) => {
+                if (videoResizeRef.current?.handle === point.handle) {
+                  updateResizedVideoScale(e.clientX, e.clientY);
+                }
+                videoResizeRef.current = null;
+                setResizingVideoClipId(null);
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+              onPointerCancel={(e) => {
+                videoResizeRef.current = null;
+                setResizingVideoClipId(null);
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+            />
+          ))}
 
-        {activeVisibleVideoRects.length > 0 && editingClipId === null && (
-          <div
-            className={`absolute inset-0 ${draggingVideoClipId ? "cursor-grabbing" : "cursor-grab"}`}
-            style={{ zIndex: 1000 }}
-            onPointerDown={(e) => {
-              const container = containerRef.current;
-              if (!container) return;
+          {activeVisibleVideoRects.length > 0 && editingClipId === null && (
+            <div
+              className={`absolute inset-0 ${draggingVideoClipId ? "cursor-grabbing" : "cursor-grab"}`}
+              style={{ zIndex: 1000 }}
+              onPointerDown={(e) => {
+                const container = containerRef.current;
+                if (!container) return;
 
-              const rect = container.getBoundingClientRect();
-              if (rect.width <= 0 || rect.height <= 0) return;
+                const rect = container.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
 
-              const localX = e.clientX - rect.left;
-              const localY = e.clientY - rect.top;
-              const hitRect = [...activeVisibleVideoRects]
-                .reverse()
-                .find((candidate) => pointInRect(localX, localY, candidate));
-              if (!hitRect) {
-                setFocusedVideoClipId(null);
-                return;
-              }
+                const localX = e.clientX - rect.left;
+                const localY = e.clientY - rect.top;
+                const hitRect = [...activeVisibleVideoRects]
+                  .reverse()
+                  .find((candidate) => pointInRect(localX, localY, candidate));
+                if (!hitRect) {
+                  setFocusedVideoClipId(null);
+                  return;
+                }
 
-              const clip = activeVideoClips.find(
-                (item) => item.id === hitRect.clipId,
-              );
-              if (!clip) return;
+                const clip = activeVideoClips.find(
+                  (item) => item.id === hitRect.clipId,
+                );
+                if (!clip) return;
 
-              const zoneRect = getPreviewZoneRect(rect.width, rect.height);
-              if (zoneRect.width <= 0 || zoneRect.height <= 0) return;
+                const zoneRect = getPreviewZoneRect(rect.width, rect.height);
+                if (zoneRect.width <= 0 || zoneRect.height <= 0) return;
 
-              const pointerX = (localX - zoneRect.left) / zoneRect.width;
-              const pointerY = (localY - zoneRect.top) / zoneRect.height;
-              const currentX = clamp01(clip.videoX ?? 0.5);
-              const currentY = clamp01(clip.videoY ?? 0.5);
+                const pointerX = (localX - zoneRect.left) / zoneRect.width;
+                const pointerY = (localY - zoneRect.top) / zoneRect.height;
+                const currentX = clamp01(clip.videoX ?? 0.5);
+                const currentY = clamp01(clip.videoY ?? 0.5);
 
-              videoDragRef.current = {
-                clipId: clip.id,
-                offsetX: pointerX - currentX,
-                offsetY: pointerY - currentY,
-              };
-              setDraggingVideoClipId(clip.id);
-              setFocusedVideoClipId(clip.id);
-              selectClip(clip.id);
-              e.currentTarget.setPointerCapture(e.pointerId);
-              e.preventDefault();
-            }}
-            onPointerMove={(e) => {
-              if (!videoDragRef.current) {
-                return;
-              }
-              updateDraggedVideoPosition(e.clientX, e.clientY);
-            }}
-            onPointerUp={(e) => {
-              if (videoDragRef.current) {
+                videoDragRef.current = {
+                  clipId: clip.id,
+                  offsetX: pointerX - currentX,
+                  offsetY: pointerY - currentY,
+                };
+                setDraggingVideoClipId(clip.id);
+                setFocusedVideoClipId(clip.id);
+                selectClip(clip.id);
+                e.currentTarget.setPointerCapture(e.pointerId);
+                e.preventDefault();
+              }}
+              onPointerMove={(e) => {
+                if (!videoDragRef.current) {
+                  return;
+                }
                 updateDraggedVideoPosition(e.clientX, e.clientY);
-              }
-              videoDragRef.current = null;
-              setDraggingVideoClipId(null);
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-            }}
-            onPointerCancel={(e) => {
-              videoDragRef.current = null;
-              setDraggingVideoClipId(null);
-              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-              }
-            }}
+              }}
+              onPointerUp={(e) => {
+                if (videoDragRef.current) {
+                  updateDraggedVideoPosition(e.clientX, e.clientY);
+                }
+                videoDragRef.current = null;
+                setDraggingVideoClipId(null);
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+              onPointerCancel={(e) => {
+                videoDragRef.current = null;
+                setDraggingVideoClipId(null);
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                }
+              }}
+            />
+          )}
+
+          <DraggableTextOverlays
+            activeTextClips={activeTextClips}
+            selectedClipId={selectedClipId}
+            rowOrderById={rowOrderById}
+            containerRef={containerRef}
+            onUpdateTextClipPosition={updateTextClipPosition}
+            onDeleteClip={deleteClip}
+            onOpenEditor={(clipId) => setEditingClipId(clipId)}
+            onSelectClip={selectClip}
           />
-        )}
 
-        <DraggableTextOverlays
-          activeTextClips={activeTextClips}
-          selectedClipId={selectedClipId}
-          rowOrderById={rowOrderById}
-          containerRef={containerRef}
-          onUpdateTextClipPosition={updateTextClipPosition}
-          onDeleteClip={deleteClip}
-          onOpenEditor={(clipId) => setEditingClipId(clipId)}
-          onSelectClip={selectClip}
-        />
-
-        <PreviewOverlayMessages
-          initError={initError}
-          hasActiveVideos={activeVideoClips.length > 0}
-        />
+          <PreviewOverlayMessages
+            initError={initError}
+            hasActiveVideos={activeVideoClips.length > 0}
+          />
+        </div>
       </div>
 
       {textEditPanel}

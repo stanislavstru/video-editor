@@ -45,8 +45,8 @@ function App() {
     <div className="flex h-screen w-screen overflow-hidden bg-background font-sans">
       <Sidebar />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-hidden bg-surface-raised">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-hidden bg-surface-raised">
           <Preview />
         </main>
 
